@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HoursLog Export — {{ user_name }}</title>
+    <style>
+        @page { size: A4; margin: 1.5cm; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #212529; font-size: 11px; }
+        h1 { font-size: 22px; margin-bottom: 4px; }
+        h2 { font-size: 16px; color: #495057; margin-top: 28px; }
+        .subtitle { color: #6c757d; font-size: 12px; margin-bottom: 18px; }
+
+        /* ── Overview cards ────────────────────────────────── */
+        .stats { display: flex; gap: 12px; margin-bottom: 20px; }
+        .stat-card {
+            flex: 1;
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 4px;
+        }
+        .stat-card.green  { border-left-color: #28a745; }
+        .stat-card.yellow { border-left-color: #ffc107; }
+        .stat-card.teal   { border-left-color: #17a2b8; }
+        .stat-card .label { font-size: 10px; color: #6c757d; text-transform: uppercase; letter-spacing: .5px; }
+        .stat-card .value { font-size: 22px; font-weight: bold; margin-top: 2px; }
+
+        /* ── Charts ────────────────────────────────────────── */
+        .charts { display: flex; gap: 20px; margin-bottom: 10px; }
+        .charts img { max-width: 48%; height: auto; }
+
+        /* ── Entries table ─────────────────────────────────── */
+        table { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 8px; }
+        th { background: #343a40; color: white; padding: 6px 8px; text-align: left; }
+        td { padding: 5px 8px; border-bottom: 1px solid #dee2e6; }
+        tr:nth-child(even) td { background: #f8f9fa; }
+        .cat-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: white;
+            font-size: 9px;
+            font-weight: bold;
+        }
+        .text-right { text-align: right; }
+        .page-break { page-break-before: always; }
+
+        /* Footer on every page */
+        @bottom-center { content: "Page " counter(page) " of " counter(pages); font-size: 9px; color: #999; }
+    </style>
+</head>
+<body>
+
+<!-- ── PAGE 1: Overview ──────────────────────────────────── -->
+<h1>HoursLog Report</h1>
+<p class="subtitle">{{ user_name }} &mdash; {{ period_label }}{% if start_date %} ({{ start_date }} to {{ end_date }}){% endif %}</p>
+
+<div class="stats">
+    <div class="stat-card">
+        <div class="label">Total Hours</div>
+        <div class="value">{{ "%.1f"|format(summary.total_hours) }}</div>
+    </div>
+    <div class="stat-card green">
+        <div class="label">Activity Hours</div>
+        <div class="value">{{ "%.1f"|format(summary.activity_hours) }}</div>
+    </div>
+    <div class="stat-card yellow">
+        <div class="label">Travel Hours</div>
+        <div class="value">{{ "%.1f"|format(summary.travel_hours) }}</div>
+    </div>
+    <div class="stat-card teal">
+        <div class="label">Total Entries</div>
+        <div class="value">{{ summary.total_entries }}</div>
+    </div>
+</div>
+
+{% if category_chart or role_chart %}
+<div class="charts">
+    {% if category_chart %}<img src="data:image/png;base64,{{ category_chart }}" alt="Category Chart">{% endif %}
+    {% if role_chart %}<img src="data:image/png;base64,{{ role_chart }}" alt="Role Chart">{% endif %}
+</div>
+{% endif %}
+
+<!-- ── PAGES 2+: Entries list ────────────────────────────── -->
+<div class="page-break"></div>
+<h2>Log Entries</h2>
+
+{% for batch in entries | batch(30) %}
+{% if not loop.first %}<div class="page-break"></div>{% endif %}
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Title</th>
+            <th>Category</th>
+            <th>Role</th>
+            <th class="text-right">Activity</th>
+            <th class="text-right">Travel</th>
+            <th class="text-right">Total</th>
+            <th>Notes</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in batch %}
+        <tr>
+            <td>{{ entry.date.strftime('%Y-%m-%d') }}</td>
+            <td>{{ entry.title }}</td>
+            <td><span class="cat-badge" style="background-color:{{ entry.category.color }}">{{ entry.category.name }}</span></td>
+            <td>
+                {{ entry.role.name }}
+                {% for sr in entry.secondary_roles %}<br><small>{{ sr.name }}</small>{% endfor %}
+            </td>
+            <td class="text-right">{{ "%.1f"|format(entry.hours) }}h</td>
+            <td class="text-right">{{ "%.1f"|format(entry.travel_hours or 0) }}h</td>
+            <td class="text-right"><strong>{{ "%.1f"|format(entry.total_hours) }}h</strong></td>
+            <td>{{ (entry.notes or '')[:80] }}{% if entry.notes and entry.notes|length > 80 %}&hellip;{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endfor %}
+
+</body>
+</html>

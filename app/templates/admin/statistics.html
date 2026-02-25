@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Statistics - HoursLog{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Statistics</h1>
+
+<div class="row">
+    <!-- Top Contributors -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Top Contributors</h5>
+            </div>
+            <div class="card-body">
+                {% if hours_by_user %}
+                <div class="list-group list-group-flush">
+                    {% for user in hours_by_user %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ user[0] }}
+                        <div>
+                            <span class="badge bg-primary rounded-pill">{{ "%.1f"|format(user[1]) }}h</span>
+                            <span class="badge bg-success rounded-pill" title="Excludes travel">{{ "%.1f"|format(user[2]) }}h</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="mt-2 small text-muted">
+                    <span class="badge bg-primary">&nbsp;</span> Total &nbsp;
+                    <span class="badge bg-success">&nbsp;</span> Excl. Travel
+                </div>
+                {% else %}
+                <p class="text-muted text-center">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hours by Category -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Hours by Category</h5>
+            </div>
+            <div class="card-body">
+                {% if hours_by_category %}
+                <canvas id="categoryChart"></canvas>
+                {% else %}
+                <p class="text-muted text-center">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hours by Role -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Hours by Role</h5>
+            </div>
+            <div class="card-body">
+                {% if hours_by_role %}
+                <canvas id="roleChart"></canvas>
+                {% else %}
+                <p class="text-muted text-center">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    {% if hours_by_category %}
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    new Chart(categoryCtx, {
+        type: 'pie',
+        data: {
+            labels: [{% for item in hours_by_category %}'{{ item[0] }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                data: [{% for item in hours_by_category %}{{ item[1] }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.8)',
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 206, 86, 0.8)',
+                    'rgba(75, 192, 192, 0.8)',
+                    'rgba(153, 102, 255, 0.8)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true
+        }
+    });
+    {% endif %}
+
+    {% if hours_by_role %}
+    const roleCtx = document.getElementById('roleChart').getContext('2d');
+    new Chart(roleCtx, {
+        type: 'pie',
+        data: {
+            labels: [{% for item in hours_by_role %}'{{ item[0] }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                data: [{% for item in hours_by_role %}{{ item[1] }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.8)',
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 206, 86, 0.8)',
+                    'rgba(75, 192, 192, 0.8)',
+                    'rgba(153, 102, 255, 0.8)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true
+        }
+    });
+    {% endif %}
+</script>
+{% endblock %}

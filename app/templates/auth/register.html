@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Register - HoursLog{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">Register</h2>
+                <form method="POST" action="">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ form.username.label(class="form-label") }}
+                        {{ form.username(class="form-control" + (" is-invalid" if form.username.errors else "")) }}
+                        {% if form.username.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.username.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.email.label(class="form-label") }}
+                        {{ form.email(class="form-control" + (" is-invalid" if form.email.errors else "")) }}
+                        {% if form.email.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.email.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.first_name.label(class="form-label") }}
+                            {{ form.first_name(class="form-control") }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            {{ form.last_name.label(class="form-label") }}
+                            {{ form.last_name(class="form-control") }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.password.label(class="form-label") }}
+                        {{ form.password(class="form-control" + (" is-invalid" if form.password.errors else "")) }}
+                        {% if form.password.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.password.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.password2.label(class="form-label") }}
+                        {{ form.password2(class="form-control" + (" is-invalid" if form.password2.errors else "")) }}
+                        {% if form.password2.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.password2.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+                
+                <div class="text-center mt-3">
+                    <p>Already have an account? <a href="{{ url_for('auth.login') }}">Sign in here</a></p>
+                </div>
+                
+                <hr>
+                <p class="text-center text-muted mb-3">Or sign up with</p>
+                <div class="d-grid gap-2">
+                    {% if google_sso_enabled %}
+                    <a href="{{ url_for('auth.google_login') }}" class="btn btn-outline-danger">
+                        <i class="bi bi-google"></i> Sign up with Google
+                    </a>
+                    {% else %}
+                    <button class="btn btn-outline-secondary" disabled title="Google SSO is not configured">
+                        <i class="bi bi-google"></i> Sign up with Google
+                        <small class="d-block text-muted">Sorry, this feature is unavailable</small>
+                    </button>
+                    {% endif %}
+                    
+                    {% if azure_sso_enabled %}
+                    <a href="{{ url_for('auth.azure_login') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-microsoft"></i> Sign up with Microsoft
+                    </a>
+                    {% else %}
+                    <button class="btn btn-outline-secondary" disabled title="Microsoft SSO is not configured">
+                        <i class="bi bi-microsoft"></i> Sign up with Microsoft
+                        <small class="d-block text-muted">Sorry, this feature is unavailable</small>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

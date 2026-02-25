@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - HoursLog{% endblock %}
+
+{% block styles %}
+<style>
+    .leaderboard-container {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .leaderboard-rank {
+        width: 40px;
+        text-align: center;
+        font-weight: bold;
+    }
+    .leaderboard-rank.gold { color: #ffc107; }
+    .leaderboard-rank.silver { color: #adb5bd; }
+    .leaderboard-rank.bronze { color: #cd7f32; }
+    .leaderboard-current-user {
+        background-color: rgba(0, 123, 255, 0.1) !important;
+        border-left: 3px solid #007bff;
+    }
+    .notes-truncate {
+        max-width: 150px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Dashboard</h1>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Total Hours</h5>
+                <h2 class="card-text">{{ "%.1f"|format(total_hours) }}</h2>
+                <i class="bi bi-clock-history text-primary" style="font-size: 2rem; position: absolute; right: 20px; top: 20px; opacity: 0.3;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card" style="border-left-color: #28a745;">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Excludes Travel</h5>
+                <h2 class="card-text">{{ "%.1f"|format(total_activity_hours) }}</h2>
+                <i class="bi bi-briefcase text-success" style="font-size: 2rem; position: absolute; right: 20px; top: 20px; opacity: 0.3;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card" style="border-left-color: #ffc107;">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Travel Hours</h5>
+                <h2 class="card-text">{{ "%.1f"|format(total_travel_hours) }}</h2>
+                <i class="bi bi-car-front text-warning" style="font-size: 2rem; position: absolute; right: 20px; top: 20px; opacity: 0.3;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card" style="border-left-color: #17a2b8;">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Total Entries</h5>
+                <h2 class="card-text">{{ total_entries }}</h2>
+                <i class="bi bi-list-ul text-info" style="font-size: 2rem; position: absolute; right: 20px; top: 20px; opacity: 0.3;"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts and Leaderboard Row -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">Hours by Category</h5>
+            </div>
+            <div class="card-body">
+                {% if hours_by_category %}
+                <canvas id="categoryChart"></canvas>
+                {% else %}
+                <p class="text-muted text-center">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">Hours by Role</h5>
+            </div>
+            <div class="card-body">
+                {% if hours_by_role %}
+                <canvas id="roleChart"></canvas>
+                {% else %}
+                <p class="text-muted text-center">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-trophy"></i> Leaderboard</h5>
+                <select class="form-select form-select-sm" style="width: auto;" onchange="window.location.href='{{ url_for('main.dashboard') }}?leaderboard_period=' + this.value">
+                    <option value="all" {{ 'selected' if leaderboard_period == 'all' }}>All Time</option>
+                    <option value="year" {{ 'selected' if leaderboard_period == 'year' }}>This Year</option>
+                    <option value="month" {{ 'selected' if leaderboard_period == 'month' }}>This Month</option>
+                    <option value="week" {{ 'selected' if leaderboard_period == 'week' }}>This Week</option>
+                </select>
+            </div>
+            <div class="card-body p-0">
+                {% if user_rank %}
+                <div class="p-3 bg-light border-bottom">
+                    <strong><i class="bi bi-geo-alt-fill text-primary"></i> Your Rank: #{{ user_rank }}</strong>
+                </div>
+                {% endif %}
+                <div class="leaderboard-container">
+                    {% if leaderboard %}
+                    <div class="list-group list-group-flush">
+                        {% for entry in leaderboard %}
+                        <div class="list-group-item d-flex align-items-center py-2 {{ 'leaderboard-current-user' if entry.id == current_user.id }}">
+                            <span class="leaderboard-rank {{ 'gold' if loop.index == 1 else ('silver' if loop.index == 2 else ('bronze' if loop.index == 3 else '')) }}">
+                                {% if loop.index == 1 %}<i class="bi bi-trophy-fill"></i>
+                                {% elif loop.index == 2 %}<i class="bi bi-trophy-fill"></i>
+                                {% elif loop.index == 3 %}<i class="bi bi-trophy-fill"></i>
+                                {% else %}#{{ loop.index }}{% endif %}
+                            </span>
+                            <div class="flex-grow-1 ms-2">
+                                <span class="fw-semibold">
+                                    {% if entry.display_name %}{{ entry.display_name }}
+                                    {% elif entry.first_name %}{{ entry.first_name }} {{ entry.last_name or '' }}
+                                    {% else %}{{ entry.username }}{% endif %}
+                                </span>
+                            </div>
+                            <span class="badge bg-primary rounded-pill">{{ "%.1f"|format(entry.total_hours) }}h</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center p-3">No data for this period</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Panel -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-download"></i> Export Data</h5>
+    </div>
+    <div class="card-body">
+        <form id="exportForm" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="exportPeriod" class="form-label">Time Period</label>
+                <select id="exportPeriod" class="form-select" onchange="toggleCustomDates()">
+                    <option value="all">All Time</option>
+                    <option value="year">This Year</option>
+                    <option value="month">This Month</option>
+                    <option value="week">This Week</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+            </div>
+            <div class="col-md-2 custom-dates" style="display:none;">
+                <label for="exportStart" class="form-label">Start Date</label>
+                <input type="date" id="exportStart" class="form-control">
+            </div>
+            <div class="col-md-2 custom-dates" style="display:none;">
+                <label for="exportEnd" class="form-label">End Date</label>
+                <input type="date" id="exportEnd" class="form-control">
+            </div>
+            {% if current_user.is_admin %}
+            <div class="col-md-3">
+                <label for="exportUser" class="form-label">User</label>
+                <select id="exportUser" class="form-select">
+                    <option value="">My Data</option>
+                    {% for u in all_users %}
+                    <option value="{{ u.id }}">{{ u.get_display_name }} ({{ u.username }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-auto">
+                <button type="button" class="btn btn-success" onclick="doExport('pdf')">
+                    <i class="bi bi-file-earmark-pdf"></i> PDF
+                </button>
+                <button type="button" class="btn btn-outline-success" onclick="doExport('csv')">
+                    <i class="bi bi-filetype-csv"></i> CSV
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Recent Entries -->
+<div class="card" id="log-entries">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Recent Log Entries</h5>
+        <a href="{{ url_for('main.new_log') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle"></i> New Entry
+        </a>
+    </div>
+    <div class="card-body">
+        {% if entries.items %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Role</th>
+                        <th>Activity</th>
+                        <th>Travel</th>
+                        <th>Total</th>
+                        <th>Notes</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries.items %}
+                    <tr>
+                        <td>{{ entry.date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ entry.title }}</td>
+                        <td><span class="badge" style="background-color: {{ entry.category.color }};">{{ entry.category.name }}</span></td>
+                        <td>
+                            {{ entry.role.name }}
+                            {% for sr in entry.secondary_roles %}
+                            <span class="badge bg-secondary ms-1" style="font-size: 0.65em;">{{ sr.name }}</span>
+                            {% endfor %}
+                        </td>
+                        <td>{{ "%.1f"|format(entry.hours) }}h</td>
+                        <td>{{ "%.1f"|format(entry.travel_hours or 0) }}h</td>
+                        <td><strong>{{ "%.1f"|format(entry.total_hours) }}h</strong></td>
+                        <td>
+                            {% if entry.notes %}
+                            <span class="notes-truncate d-inline-block" title="{{ entry.notes }}">{{ entry.notes }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('main.edit_log', id=entry.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('main.delete_log', id=entry.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this entry?')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        {% if entries.has_prev or entries.has_next %}
+        <nav>
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if not entries.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('main.dashboard', page=entries.prev_num, leaderboard_period=leaderboard_period) ~ '#log-entries' if entries.has_prev else '#' }}">Previous</a>
+                </li>
+                {% for page_num in entries.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+                    {% if page_num %}
+                        <li class="page-item {% if page_num == entries.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('main.dashboard', page=page_num, leaderboard_period=leaderboard_period) ~ '#log-entries' }}">{{ page_num }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                <li class="page-item {% if not entries.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('main.dashboard', page=entries.next_num, leaderboard_period=leaderboard_period) ~ '#log-entries' if entries.has_next else '#' }}">Next</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <p class="text-center text-muted">No log entries yet. <a href="{{ url_for('main.new_log') }}">Create your first entry</a>!</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    {% if hours_by_category %}
+    // Category Chart
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    new Chart(categoryCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [{% for item in hours_by_category %}'{{ item[0] }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                data: [{% for item in hours_by_category %}{{ item[1] }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.8)',
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 206, 86, 0.8)',
+                    'rgba(75, 192, 192, 0.8)',
+                    'rgba(153, 102, 255, 0.8)',
+                    'rgba(255, 159, 64, 0.8)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true
+        }
+    });
+    {% endif %}
+
+    {% if hours_by_role %}
+    // Role Chart
+    const roleCtx = document.getElementById('roleChart').getContext('2d');
+    new Chart(roleCtx, {
+        type: 'bar',
+        data: {
+            labels: [{% for item in hours_by_role %}'{{ item[0] }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                label: 'Hours',
+                data: [{% for item in hours_by_role %}{{ item[1] }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: 'rgba(54, 162, 235, 0.8)'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    {% endif %}
+
+    // ── Export helpers ────────────────────────────────────────────────
+    function toggleCustomDates() {
+        const show = document.getElementById('exportPeriod').value === 'custom';
+        document.querySelectorAll('.custom-dates').forEach(el => el.style.display = show ? '' : 'none');
+    }
+
+    function doExport(format) {
+        const period = document.getElementById('exportPeriod').value;
+        let url = '{{ url_for("main.export_pdf") }}'.replace('/pdf', '/' + format);
+        url += '?period=' + period;
+        if (period === 'custom') {
+            const s = document.getElementById('exportStart').value;
+            const e = document.getElementById('exportEnd').value;
+            if (s) url += '&start=' + s;
+            if (e) url += '&end=' + e;
+        }
+        const userSel = document.getElementById('exportUser');
+        if (userSel && userSel.value) url += '&user_id=' + userSel.value;
+        window.location.href = url;
+    }
+</script>
+{% endblock %}

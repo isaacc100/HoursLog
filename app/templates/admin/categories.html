@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Categories - HoursLog{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Manage Categories</h1>
+    <a href="{{ url_for('admin.add_category') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Add Category
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if categories %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Color</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Log Entries</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in categories %}
+                    <tr class="{{ 'table-secondary' if not category.is_active else '' }}">
+                        <td>
+                            <span class="d-inline-block rounded-circle" style="width: 20px; height: 20px; background-color: {{ category.color }};" title="{{ category.color }}"></span>
+                        </td>
+                        <td>{{ category.name }}</td>
+                        <td>{{ category.description or '—' }}</td>
+                        <td>
+                            <span class="badge bg-info">{{ category.log_entries.count() }}</span>
+                        </td>
+                        <td>
+                            {% if category.is_active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ category.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <a href="{{ url_for('admin.edit_category', id=category.id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                <i class="bi bi-pencil"></i> Edit
+                            </a>
+                            <form method="POST" action="{{ url_for('admin.toggle_category_active', id=category.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-outline-{{ 'secondary' if category.is_active else 'success' }}" title="{{ 'Deactivate' if category.is_active else 'Activate' }}">
+                                    {% if category.is_active %}
+                                    <i class="bi bi-x-circle"></i> Deactivate
+                                    {% else %}
+                                    <i class="bi bi-check-circle"></i> Activate
+                                    {% endif %}
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-center text-muted">No categories found. Click "Add Category" to create one.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

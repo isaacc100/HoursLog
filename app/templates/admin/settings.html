@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Settings - HoursLog{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-gear"></i> Application Settings</h1>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Global Settings</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.settings') }}">
+                    
+                    <h6 class="text-muted mb-3">Profile Permissions</h6>
+                    <p class="text-muted small">Control which profile features are available to all users.</p>
+                    
+                    <div class="mb-3 form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="allow_display_name_change" 
+                               name="allow_display_name_change" {{ 'checked' if settings.allow_display_name_change }}>
+                        <label class="form-check-label" for="allow_display_name_change">
+                            Allow users to change their display name
+                        </label>
+                    </div>
+                    
+                    <div class="mb-3 form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="allow_password_reset" 
+                               name="allow_password_reset" {{ 'checked' if settings.allow_password_reset }}>
+                        <label class="form-check-label" for="allow_password_reset">
+                            Allow users to change their password
+                        </label>
+                    </div>
+                    
+                    <div class="mb-3 form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="allow_profile_pic_change" 
+                               name="allow_profile_pic_change" {{ 'checked' if settings.allow_profile_pic_change }}>
+                        <label class="form-check-label" for="allow_profile_pic_change">
+                            Allow users to upload/change their profile picture
+                        </label>
+                    </div>
+                    
+                    <hr>
+                    
+                    <h6 class="text-muted mb-3">Leaderboard Settings</h6>
+                    
+                    <div class="mb-3">
+                        <label for="leaderboard_size" class="form-label">Leaderboard Size</label>
+                        <input type="number" class="form-control" id="leaderboard_size" name="leaderboard_size" 
+                               value="{{ settings.leaderboard_size }}" min="10" max="500" step="1">
+                        <div class="form-text">Maximum number of users shown on the dashboard leaderboard (10–500).</div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <h6 class="text-muted mb-3">Footer Settings</h6>
+                    
+                    <div class="mb-3">
+                        <label for="footer_text" class="form-label">Footer Text</label>
+                        <input type="text" class="form-control" id="footer_text" name="footer_text" 
+                               value="{{ settings.footer_text or '' }}" maxlength="500"
+                               placeholder="Leave blank to use default from config">
+                        <div class="form-text">Custom footer text displayed on every page. Leave blank to use the default.</div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Admin
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Save Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

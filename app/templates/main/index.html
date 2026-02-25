@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Home - HoursLog{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="jumbotron bg-light p-5 rounded">
+            <h1 class="display-4">Welcome to HoursLog</h1>
+            <p class="lead">A comprehensive volunteer hours tracking application</p>
+            <hr class="my-4">
+            <p>Track your volunteer hours, manage activities, and visualize your contributions with ease.</p>
+            {% if not current_user.is_authenticated %}
+            <div class="mt-4">
+                <a class="btn btn-primary btn-lg me-2" href="{{ url_for('auth.register') }}" role="button">
+                    <i class="bi bi-person-plus"></i> Get Started
+                </a>
+                <a class="btn btn-outline-primary btn-lg" href="{{ url_for('auth.login') }}" role="button">
+                    <i class="bi bi-box-arrow-in-right"></i> Sign In
+                </a>
+            </div>
+            {% else %}
+            <div class="mt-4">
+                <a class="btn btn-primary btn-lg" href="{{ url_for('main.dashboard') }}" role="button">
+                    <i class="bi bi-speedometer2"></i> Go to Dashboard
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-clock-history display-1 text-primary"></i>
+                <h5 class="card-title mt-3">Track Hours</h5>
+                <p class="card-text">Easily log your volunteer hours with detailed information including categories, roles, and descriptions.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-bar-chart display-1 text-success"></i>
+                <h5 class="card-title mt-3">Visualize Data</h5>
+                <p class="card-text">View your contributions through interactive charts and comprehensive reports.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <i class="bi bi-shield-lock display-1 text-info"></i>
+                <h5 class="card-title mt-3">Secure & Private</h5>
+                <p class="card-text">Your data is secure with password hashing and role-based access control.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

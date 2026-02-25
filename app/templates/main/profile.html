@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - HoursLog{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-person"></i> Profile</h1>
+
+<div class="row">
+    <!-- Avatar & Info Column -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <!-- Avatar -->
+                {% if current_user.profile_pic %}
+                <img src="{{ url_for('static', filename='uploads/avatars/' + current_user.profile_pic) }}" 
+                     alt="Profile Picture" class="rounded-circle mb-3" 
+                     style="width: 120px; height: 120px; object-fit: cover;">
+                {% else %}
+                <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
+                     style="width: 120px; height: 120px; background-color: {{ current_user.avatar_color }}; color: white; font-size: 2.5rem; font-weight: bold;">
+                    {{ current_user.initials }}
+                </div>
+                {% endif %}
+                
+                <h4>{{ current_user.get_display_name }}</h4>
+                <p class="text-muted">@{{ current_user.username }}</p>
+                <p class="text-muted">{{ current_user.email }}</p>
+                {% if current_user.first_name or current_user.last_name %}
+                <p class="text-muted small">{{ current_user.first_name or '' }} {{ current_user.last_name or '' }}</p>
+                {% endif %}
+                <hr>
+                <small class="text-muted">Member since {{ current_user.created_at.strftime('%B %d, %Y') }}</small>
+                {% if current_user.last_login %}
+                <br><small class="text-muted">Last login: {{ current_user.last_login.strftime('%Y-%m-%d %H:%M') }}</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Profile Column -->
+    <div class="col-md-8">
+        <!-- Profile Settings -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Edit Profile</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('main.profile') }}" enctype="multipart/form-data">
+                    {{ profile_form.hidden_tag() }}
+                    
+                    {% if settings.allow_display_name_change %}
+                    <div class="mb-3">
+                        {{ profile_form.display_name.label(class="form-label") }}
+                        {{ profile_form.display_name(class="form-control" + (" is-invalid" if profile_form.display_name.errors else ""), placeholder="How you want to appear to others") }}
+                        <div class="form-text">Leave blank to use your first/last name or username.</div>
+                        {% if profile_form.display_name.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in profile_form.display_name.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i> Display name changes are currently disabled by an administrator.
+                    </div>
+                    {% endif %}
+                    
+                    {% if settings.allow_profile_pic_change %}
+                    <div class="mb-3">
+                        {{ profile_form.profile_pic.label(class="form-label") }}
+                        {{ profile_form.profile_pic(class="form-control") }}
+                        <div class="form-text">Accepted formats: JPG, PNG, GIF, WebP. Max size: 2MB.</div>
+                        {% if profile_form.profile_pic.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in profile_form.profile_pic.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% if current_user.profile_pic %}
+                    <div class="mb-3">
+                        <a href="{{ url_for('main.remove_profile_pic') }}" class="btn btn-sm btn-outline-danger" 
+                           onclick="event.preventDefault(); if(confirm('Remove your profile picture?')) { var f = document.createElement('form'); f.method='POST'; f.action='{{ url_for('main.remove_profile_pic') }}'; document.body.appendChild(f); f.submit(); }">
+                            <i class="bi bi-trash"></i> Remove Current Picture
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i> Profile picture changes are currently disabled by an administrator.
+                    </div>
+                    {% endif %}
+                    
+                    {% if settings.allow_display_name_change or settings.allow_profile_pic_change %}
+                    <div class="d-grid">
+                        {{ profile_form.submit(class="btn btn-primary") }}
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        
+        <!-- Change Password -->
+        {% if settings.allow_password_reset %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-key"></i> Change Password</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('main.profile') }}">
+                    {{ password_form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ password_form.current_password.label(class="form-label") }}
+                        {{ password_form.current_password(class="form-control" + (" is-invalid" if password_form.current_password.errors else "")) }}
+                        {% if password_form.current_password.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in password_form.current_password.errors %}
+                                    <span>{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ password_form.new_password.label(class="form-label") }}
+                            {{ password_form.new_password(class="form-control" + (" is-invalid" if password_form.new_password.errors else "")) }}
+                            {% if password_form.new_password.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in password_form.new_password.errors %}
+                                        <span>{{ error }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            {{ password_form.confirm_password.label(class="form-label") }}
+                            {{ password_form.confirm_password(class="form-control" + (" is-invalid" if password_form.confirm_password.errors else "")) }}
+                            {% if password_form.confirm_password.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in password_form.confirm_password.errors %}
+                                        <span>{{ error }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid">
+                        {{ password_form.submit_password(class="btn btn-warning") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-body">
+                <div class="alert alert-info mb-0">
+                    <i class="bi bi-info-circle"></i> Password changes are currently disabled by an administrator.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
