@@ -16,7 +16,7 @@
                         <th>Email</th>
                         <th>Name</th>
                         <th>Status</th>
-                        <th>Role</th>
+                        <th>Permission Level</th>
                         <th>Joined</th>
                         <th>Actions</th>
                     </tr>
@@ -28,36 +28,54 @@
                         <td>{{ user.email }}</td>
                         <td>{{ user.first_name or '' }} {{ user.last_name or '' }}</td>
                         <td>
-                            {% if user.is_active %}
-                            <span class="badge bg-success">Active</span>
+                            {% if user.permission_level == 0 %}
+                            <span class="badge bg-secondary">Deactivated</span>
+                            {% elif user.permission_level == 7 %}
+                            <span class="badge bg-danger">Full Admin</span>
+                            {% elif user.permission_level == 2 %}
+                            <span class="badge bg-info">Reviewer</span>
+                            {% elif user.permission_level >= 3 %}
+                            <span class="badge bg-warning text-dark">{{ user.level_name }}</span>
                             {% else %}
-                            <span class="badge bg-secondary">Inactive</span>
+                            <span class="badge bg-success">Active</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% if user.is_admin %}
-                            <span class="badge bg-danger">Admin</span>
-                            {% else %}
-                            <span class="badge bg-primary">User</span>
-                            {% endif %}
+                            <span class="badge bg-primary">Level {{ user.permission_level }}</span>
+                            <small class="text-muted">{{ user.level_name }}</small>
                         </td>
                         <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
                         <td>
-                            {% if user.id != current_user.id %}
+                            {% if user.id != current_user.id and user.permission_level < current_user.permission_level %}
+                            
+                            {% if current_user.can('can_deactivate_users') %}
                             <form method="POST" action="{{ url_for('admin.toggle_user_active', id=user.id) }}" style="display: inline;">
-                                <button type="submit" class="btn btn-sm btn-outline-{{ 'success' if not user.is_active else 'secondary' }}">
-                                    {% if user.is_active %}Deactivate{% else %}Activate{% endif %}
+                                <button type="submit" class="btn btn-sm btn-outline-{{ 'success' if user.permission_level == 0 else 'secondary' }}" title="{{ 'Activate' if user.permission_level == 0 else 'Deactivate' }}">
+                                    {% if user.permission_level == 0 %}
+                                    <i class="bi bi-person-check"></i>
+                                    {% else %}
+                                    <i class="bi bi-person-x"></i>
+                                    {% endif %}
                                 </button>
                             </form>
-                            <form method="POST" action="{{ url_for('admin.toggle_user_admin', id=user.id) }}" style="display: inline;">
-                                <button type="submit" class="btn btn-sm btn-outline-{{ 'danger' if not user.is_admin else 'primary' }}">
-                                    {% if user.is_admin %}Revoke Admin{% else %}Make Admin{% endif %}
-                                </button>
-                            </form>
-                            <!-- Delete User Button (triggers modal) -->
-                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteUserModal{{ user.id }}">
-                                <i class="bi bi-trash"></i> Delete
+                            {% endif %}
+                            
+                            {% if current_user.can('can_change_user_level') %}
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#levelModal{{ user.id }}" title="Change level">
+                                <i class="bi bi-sliders"></i>
                             </button>
+                            {% endif %}
+                            
+                            {% if current_user.can('can_delete_users') %}
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteUserModal{{ user.id }}" title="Delete user">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            {% endif %}
+                            
+                            {% elif user.id == current_user.id %}
+                            <span class="text-muted small">(You)</span>
+                            {% else %}
+                            <span class="text-muted small">—</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -94,9 +112,50 @@
     </div>
 </div>
 
+<!-- Permission Level Modals -->
+{% for user in users.items %}
+{% if user.id != current_user.id and user.permission_level < current_user.permission_level and current_user.can('can_change_user_level') %}
+<div class="modal fade" id="levelModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Change Permission Level — {{ user.username }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin.set_user_level', id=user.id) }}">
+                <div class="modal-body">
+                    <p>Current level: <strong>{{ user.permission_level }} ({{ user.level_name }})</strong></p>
+                    <div class="mb-3">
+                        <label for="permission_level_{{ user.id }}" class="form-label">New Permission Level</label>
+                        <select class="form-select" name="permission_level" id="permission_level_{{ user.id }}">
+                            {% for lvl in range(0, current_user.permission_level) %}
+                            <option value="{{ lvl }}" {{ 'selected' if lvl == user.permission_level }}>
+                                Level {{ lvl }} — 
+                                {% if lvl == 0 %}Deactivated
+                                {% elif lvl == 1 %}Standard User
+                                {% elif lvl == 2 %}Entry Reviewer
+                                {% elif lvl == 7 %}Full Admin
+                                {% else %}Custom Level {{ lvl }}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
 <!-- Delete User Modals -->
 {% for user in users.items %}
-{% if user.id != current_user.id %}
+{% if user.id != current_user.id and user.permission_level < current_user.permission_level and current_user.can('can_delete_users') %}
 <div class="modal fade" id="deleteUserModal{{ user.id }}" tabindex="-1" aria-labelledby="deleteUserModalLabel{{ user.id }}" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">

@@ -4,6 +4,42 @@ from app import db, login_manager, bcrypt
 from flask_login import UserMixin
 
 
+# ── Permission constants ──────────────────────────────────────────────────
+PERMISSION_LEVEL_NAMES = {
+    0: 'Deactivated',
+    1: 'Standard User',
+    2: 'Entry Reviewer',
+    7: 'Full Admin',
+}
+
+# All granular permission keys
+ALL_PERMISSIONS = [
+    'can_manage_users',
+    'can_change_user_level',
+    'can_deactivate_users',
+    'can_delete_users',
+    'can_manage_roles',
+    'can_manage_categories',
+    'can_view_audit_log',
+    'can_view_all_entries',
+    'can_action_entries',
+    'can_deny_entries',
+    'can_edit_setting_display_name',
+    'can_edit_setting_password_reset',
+    'can_edit_setting_profile_pic',
+    'can_edit_setting_leaderboard_size',
+    'can_edit_setting_footer_text',
+    'can_view_statistics',
+]
+
+# Hardcoded permissions for level 2 (Entry Reviewer)
+LEVEL_2_PERMISSIONS = frozenset([
+    'can_view_all_entries',
+    'can_action_entries',
+    'can_deny_entries',
+])
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -29,15 +65,104 @@ class User(db.Model, UserMixin):
     last_name = db.Column(db.String(50))
     display_name = db.Column(db.String(100))
     profile_pic = db.Column(db.String(255))  # Relative path to uploaded avatar
-    is_admin = db.Column(db.Boolean, default=False)
-    is_active = db.Column(db.Boolean, default=True)
+    permission_level = db.Column(db.Integer, default=1, nullable=False, index=True)
     email_verified = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     last_login = db.Column(db.DateTime)
     
     # Relationships
-    log_entries = db.relationship('LogEntry', backref='user', lazy='dynamic', cascade='all, delete-orphan')
+    log_entries = db.relationship('LogEntry', backref='user', lazy='dynamic',
+                                  cascade='all, delete-orphan',
+                                  foreign_keys='LogEntry.user_id')
     audit_logs = db.relationship('AuditLog', backref='user', lazy='dynamic', cascade='all, delete-orphan')
+    
+    # ── Backward-compatible properties ────────────────────────────────
+    @property
+    def is_admin(self):
+        """True when user has full admin (level 7)."""
+        return self.permission_level == 7
+    
+    @is_admin.setter
+    def is_admin(self, value):
+        """Backward compat: setting is_admin=True → level 7, False → level 1."""
+        self.permission_level = 7 if value else 1
+    
+    @property
+    def is_active(self):
+        """Flask-Login uses this; deactivated users (level 0) cannot log in."""
+        return self.permission_level > 0
+    
+    @is_active.setter
+    def is_active(self, value):
+        """Backward compat: setting is_active=False → level 0."""
+        if not value:
+            self.permission_level = 0
+        elif self.permission_level == 0:
+            self.permission_level = 1
+    
+    @property
+    def is_reviewer(self):
+        """True when user can review entries (level >= 2)."""
+        return self.permission_level >= 2
+    
+    @property
+    def level_name(self):
+        """Human-readable name for this user's permission level."""
+        if self.permission_level in PERMISSION_LEVEL_NAMES:
+            return PERMISSION_LEVEL_NAMES[self.permission_level]
+        # Configurable levels 3-6: look up PermissionLevelConfig
+        config = PermissionLevelConfig.query.get(self.permission_level)
+        if config and config.name:
+            return config.name
+        return f'Level {self.permission_level}'
+    
+    def can(self, permission):
+        """Check if this user has a specific permission.
+        
+        Level 0 → always False
+        Level 1 → always False (no admin permissions)
+        Level 2 → hardcoded set (entry review only)
+        Levels 3-6 → look up PermissionLevelConfig
+        Level 7 → always True
+        """
+        if self.permission_level <= 0:
+            return False
+        if self.permission_level == 1:
+            return False
+        if self.permission_level == 7:
+            return True
+        if self.permission_level == 2:
+            return permission in LEVEL_2_PERMISSIONS
+        # Levels 3-6: look up config
+        config = PermissionLevelConfig.query.get(self.permission_level)
+        if config is None:
+            return False
+        return getattr(config, permission, False)
+    
+    def has_any_admin_permission(self):
+        """True if user has at least one admin-level permission."""
+        if self.permission_level >= 7:
+            return True
+        if self.permission_level == 2:
+            return True  # always has entry review permissions
+        if self.permission_level <= 1:
+            return False
+        # Levels 3-6
+        config = PermissionLevelConfig.query.get(self.permission_level)
+        if config is None:
+            return False
+        return any(getattr(config, p, False) for p in ALL_PERMISSIONS)
+    
+    def has_any_settings_permission(self):
+        """True if user can edit at least one setting."""
+        if self.permission_level == 7:
+            return True
+        if self.permission_level <= 2:
+            return False
+        config = PermissionLevelConfig.query.get(self.permission_level)
+        if config is None:
+            return False
+        return any(getattr(config, p, False) for p in ALL_PERMISSIONS if p.startswith('can_edit_setting_'))
     
     def set_password(self, password):
         """Hash and set the user's password."""
@@ -133,6 +258,12 @@ class LogEntry(db.Model):
     travel_hours = db.Column(db.Float, nullable=False, default=0.0)
     date = db.Column(db.Date, nullable=False, default=lambda: datetime.utcnow().date(), index=True)
     
+    # Review / approval workflow
+    review_status = db.Column(db.String(20), default='active', nullable=False, index=True)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    denial_reason = db.Column(db.Text, nullable=True)
+    
     created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow())
     updated_at = db.Column(db.DateTime, default=lambda: datetime.utcnow(), onupdate=lambda: datetime.utcnow())
     
@@ -141,10 +272,22 @@ class LogEntry(db.Model):
                                        backref=db.backref('secondary_log_entries', lazy='dynamic'),
                                        lazy='select')
     
+    # Reviewer relationship
+    reviewed_by = db.relationship('User', foreign_keys=[reviewed_by_id],
+                                   backref=db.backref('reviewed_entries', lazy='dynamic'))
+    
     @property
     def total_hours(self):
         """Return activity hours + travel hours."""
         return self.hours + (self.travel_hours or 0)
+    
+    @property
+    def is_denied(self):
+        return self.review_status == 'denied'
+    
+    @property
+    def is_actioned(self):
+        return self.review_status == 'actioned'
     
     def __repr__(self):
         return f'<LogEntry {self.title} - {self.hours}h>'
@@ -193,3 +336,48 @@ class AuditLog(db.Model):
     
     def __repr__(self):
         return f'<AuditLog {self.action} at {self.timestamp}>'
+
+
+class PermissionLevelConfig(db.Model):
+    """Configurable permission sets for levels 3-6."""
+    __tablename__ = 'permission_level_configs'
+    
+    level = db.Column(db.Integer, primary_key=True)  # 3, 4, 5, or 6
+    name = db.Column(db.String(50), default='')
+    
+    # User management
+    can_manage_users = db.Column(db.Boolean, default=False)
+    can_change_user_level = db.Column(db.Boolean, default=False)
+    can_deactivate_users = db.Column(db.Boolean, default=False)
+    can_delete_users = db.Column(db.Boolean, default=False)
+    
+    # Content management
+    can_manage_roles = db.Column(db.Boolean, default=False)
+    can_manage_categories = db.Column(db.Boolean, default=False)
+    
+    # Audit & statistics
+    can_view_audit_log = db.Column(db.Boolean, default=False)
+    can_view_statistics = db.Column(db.Boolean, default=False)
+    
+    # Entry review
+    can_view_all_entries = db.Column(db.Boolean, default=False)
+    can_action_entries = db.Column(db.Boolean, default=False)
+    can_deny_entries = db.Column(db.Boolean, default=False)
+    
+    # Individual settings
+    can_edit_setting_display_name = db.Column(db.Boolean, default=False)
+    can_edit_setting_password_reset = db.Column(db.Boolean, default=False)
+    can_edit_setting_profile_pic = db.Column(db.Boolean, default=False)
+    can_edit_setting_leaderboard_size = db.Column(db.Boolean, default=False)
+    can_edit_setting_footer_text = db.Column(db.Boolean, default=False)
+    
+    @classmethod
+    def seed_defaults(cls):
+        """Create default rows for levels 3-6 if they don't exist."""
+        for level in range(3, 7):
+            if not cls.query.get(level):
+                db.session.add(cls(level=level, name=f'Custom Level {level}'))
+        db.session.commit()
+    
+    def __repr__(self):
+        return f'<PermissionLevelConfig level={self.level} name={self.name}>'

@@ -160,7 +160,7 @@ def init_db():
         email='admin@hourslog.com',
         first_name='Admin',
         last_name='User',
-        is_admin=True,
+        permission_level=7,
         email_verified=True
     )
     admin.set_password(admin_password)

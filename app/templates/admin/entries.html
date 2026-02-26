@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Review Entries - HoursLog{% endblock %}
+
+{% block styles %}
+<style>
+    .status-active { color: #28a745; }
+    .status-actioned { color: #007bff; }
+    .status-denied { color: #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-check2-square"></i> Review Entries</h1>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.review_entries') }}" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="status" class="form-label">Status</label>
+                <select class="form-select" name="status" id="status">
+                    <option value="all" {{ 'selected' if status_filter == 'all' }}>All</option>
+                    <option value="active" {{ 'selected' if status_filter == 'active' }}>Active</option>
+                    <option value="actioned" {{ 'selected' if status_filter == 'actioned' }}>Actioned</option>
+                    <option value="denied" {{ 'selected' if status_filter == 'denied' }}>Denied</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="user_id" class="form-label">User</label>
+                <select class="form-select" name="user_id" id="user_id">
+                    <option value="">All Users</option>
+                    {% for u in all_users %}
+                    <option value="{{ u.id }}" {{ 'selected' if user_filter == u.id }}>{{ u.get_display_name }} ({{ u.username }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-funnel"></i> Filter</button>
+                <a href="{{ url_for('admin.review_entries') }}" class="btn btn-outline-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Entries Table -->
+<div class="card">
+    <div class="card-body">
+        {% if entries.items %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>User</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Hours</th>
+                        <th>Status</th>
+                        <th>Reviewed By</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries.items %}
+                    <tr class="{{ 'table-danger' if entry.review_status == 'denied' else ('table-info' if entry.review_status == 'actioned' else '') }}">
+                        <td>{{ entry.date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ entry.user.get_display_name }}</td>
+                        <td>
+                            {{ entry.title }}
+                            {% if entry.description %}
+                            <i class="bi bi-info-circle text-muted" title="{{ entry.description }}"></i>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge" style="background-color: {{ entry.category.color }};">{{ entry.category.name }}</span></td>
+                        <td>
+                            {{ "%.1f"|format(entry.hours) }}h
+                            {% if entry.travel_hours %}+ {{ "%.1f"|format(entry.travel_hours) }}h travel{% endif %}
+                        </td>
+                        <td>
+                            {% if entry.review_status == 'actioned' %}
+                            <span class="badge bg-primary"><i class="bi bi-check-circle"></i> Actioned</span>
+                            {% elif entry.review_status == 'denied' %}
+                            <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Denied</span>
+                            {% if entry.denial_reason %}
+                            <br><small class="text-muted" title="{{ entry.denial_reason }}">{{ entry.denial_reason[:50] }}{{ '...' if entry.denial_reason|length > 50 }}</small>
+                            {% endif %}
+                            {% else %}
+                            <span class="badge bg-secondary">Active</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if entry.reviewed_by %}
+                            <small>{{ entry.reviewed_by.get_display_name }}</small>
+                            {% if entry.reviewed_at %}
+                            <br><small class="text-muted">{{ entry.reviewed_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if entry.review_status != 'actioned' and current_user.can('can_action_entries') %}
+                            <form method="POST" action="{{ url_for('admin.action_entry', id=entry.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-outline-primary" title="Mark as actioned">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                            
+                            {% if entry.review_status != 'denied' and current_user.can('can_deny_entries') %}
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#denyModal{{ entry.id }}" title="Deny entry">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                            {% endif %}
+                            
+                            {% if entry.review_status == 'denied' and current_user.can('can_deny_entries') %}
+                            <form method="POST" action="{{ url_for('admin.restore_entry', id=entry.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-outline-success" title="Restore entry">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if entries.has_prev or entries.has_next %}
+        <nav>
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if not entries.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('admin.review_entries', page=entries.prev_num, status=status_filter, user_id=user_filter or '') if entries.has_prev else '#' }}">Previous</a>
+                </li>
+                {% for page_num in entries.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+                    {% if page_num %}
+                        <li class="page-item {% if page_num == entries.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('admin.review_entries', page=page_num, status=status_filter, user_id=user_filter or '') }}">{{ page_num }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                <li class="page-item {% if not entries.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('admin.review_entries', page=entries.next_num, status=status_filter, user_id=user_filter or '') if entries.has_next else '#' }}">Next</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <p class="text-center text-muted">No entries found matching filters.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Deny Modals -->
+{% for entry in entries.items %}
+{% if entry.review_status != 'denied' and current_user.can('can_deny_entries') %}
+<div class="modal fade" id="denyModal{{ entry.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-x-circle"></i> Deny Entry</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin.deny_entry', id=entry.id) }}">
+                <div class="modal-body">
+                    <p><strong>{{ entry.title }}</strong> by {{ entry.user.get_display_name }} ({{ entry.date.strftime('%Y-%m-%d') }})</p>
+                    <div class="mb-3">
+                        <label for="denial_reason_{{ entry.id }}" class="form-label">Reason (optional)</label>
+                        <textarea class="form-control" name="denial_reason" id="denial_reason_{{ entry.id }}" rows="3"
+                                  placeholder="Explain why this entry is being denied..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle"></i> Deny Entry</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

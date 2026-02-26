@@ -175,7 +175,7 @@
                 <label for="exportEnd" class="form-label">End Date</label>
                 <input type="date" id="exportEnd" class="form-control">
             </div>
-            {% if current_user.is_admin %}
+            {% if current_user.can('can_view_all_entries') %}
             <div class="col-md-3">
                 <label for="exportUser" class="form-label">User</label>
                 <select id="exportUser" class="form-select">
@@ -219,13 +219,14 @@
                         <th>Activity</th>
                         <th>Travel</th>
                         <th>Total</th>
+                        <th>Status</th>
                         <th>Notes</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for entry in entries.items %}
-                    <tr>
+                    <tr class="{{ 'table-danger' if entry.review_status == 'denied' else ('table-info' if entry.review_status == 'actioned' else '') }}">
                         <td>{{ entry.date.strftime('%Y-%m-%d') }}</td>
                         <td>{{ entry.title }}</td>
                         <td><span class="badge" style="background-color: {{ entry.category.color }};">{{ entry.category.name }}</span></td>
@@ -238,6 +239,18 @@
                         <td>{{ "%.1f"|format(entry.hours) }}h</td>
                         <td>{{ "%.1f"|format(entry.travel_hours or 0) }}h</td>
                         <td><strong>{{ "%.1f"|format(entry.total_hours) }}h</strong></td>
+                        <td>
+                            {% if entry.review_status == 'actioned' %}
+                            <span class="badge bg-primary" title="Actioned"><i class="bi bi-check-circle"></i> Actioned</span>
+                            {% elif entry.review_status == 'denied' %}
+                            <span class="badge bg-danger" title="{{ entry.denial_reason or 'Declined' }}"><i class="bi bi-x-circle"></i> Declined</span>
+                            {% if entry.denial_reason %}
+                            <br><small class="text-muted" title="{{ entry.denial_reason }}">{{ entry.denial_reason[:30] }}{{ '...' if entry.denial_reason|length > 30 }}</small>
+                            {% endif %}
+                            {% else %}
+                            <span class="badge bg-secondary">Pending</span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if entry.notes %}
                             <span class="notes-truncate d-inline-block" title="{{ entry.notes }}">{{ entry.notes }}</span>

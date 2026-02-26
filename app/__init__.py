@@ -44,6 +44,7 @@ def create_app(config_class=Config):
     # Create database tables
     with app.app_context():
         db.create_all()
+        _migrate_permission_levels(app)
     
     # Ensure upload directory exists
     import os
@@ -67,6 +68,83 @@ def create_app(config_class=Config):
         )
     
     return app
+
+
+def _migrate_permission_levels(app):
+    """One-time migration: add new columns and convert is_admin/is_active to permission_level."""
+    from app.models import User, PermissionLevelConfig
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    user_columns = [c['name'] for c in inspector.get_columns('users')]
+    entry_columns = [c['name'] for c in inspector.get_columns('log_entries')]
+
+    # ---- Step 1: Add missing columns via ALTER TABLE ----
+    # (db.create_all() does NOT add columns to existing tables)
+    alter_stmts = []
+
+    if 'permission_level' not in user_columns:
+        alter_stmts.append(
+            "ALTER TABLE users ADD COLUMN permission_level INTEGER NOT NULL DEFAULT 1"
+        )
+    if 'review_status' not in entry_columns:
+        alter_stmts.append(
+            "ALTER TABLE log_entries ADD COLUMN review_status VARCHAR(20) NOT NULL DEFAULT 'active'"
+        )
+    if 'reviewed_by_id' not in entry_columns:
+        alter_stmts.append(
+            "ALTER TABLE log_entries ADD COLUMN reviewed_by_id INTEGER REFERENCES users(id)"
+        )
+    if 'reviewed_at' not in entry_columns:
+        alter_stmts.append(
+            "ALTER TABLE log_entries ADD COLUMN reviewed_at TIMESTAMP"
+        )
+    if 'denial_reason' not in entry_columns:
+        alter_stmts.append(
+            "ALTER TABLE log_entries ADD COLUMN denial_reason TEXT"
+        )
+
+    for stmt in alter_stmts:
+        try:
+            db.session.execute(text(stmt))
+            db.session.commit()
+            app.logger.info(f'Migration: {stmt}')
+        except Exception as e:
+            db.session.rollback()
+            app.logger.debug(f'Column already exists or migration skipped: {e}')
+
+    # ---- Step 2: Migrate is_admin/is_active → permission_level ----
+    # Always attempt; succeeds when both old & new columns exist, harmless if not
+    try:
+        # Use boolean-compatible syntax (works on both SQLite and PostgreSQL)
+        db.session.execute(text(
+            "UPDATE users SET permission_level = CASE "
+            "WHEN is_admin = true THEN 7 "
+            "WHEN is_active = false THEN 0 "
+            "ELSE 1 END "
+            "WHERE permission_level = 1"  # only migrate un-migrated rows
+        ))
+        db.session.commit()
+        app.logger.info('Migrated users from is_admin/is_active to permission_level.')
+    except Exception as e:
+        db.session.rollback()
+        app.logger.debug(f'Permission level data migration skipped: {e}')
+
+    # ---- Step 3: Set review_status default for existing entries ----
+    try:
+        db.session.execute(text(
+            "UPDATE log_entries SET review_status = 'active' WHERE review_status IS NULL"
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    # ---- Step 4: Seed PermissionLevelConfig rows for levels 3-6 ----
+    try:
+        PermissionLevelConfig.seed_defaults()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.warning(f'PermissionLevelConfig seed skipped: {e}')
 
 
 from app import models

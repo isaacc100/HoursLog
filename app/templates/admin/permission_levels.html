@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Permission Levels - HoursLog{% endblock %}
+
+{% block styles %}
+<style>
+    .perm-table th { font-size: 0.85rem; }
+    .perm-table td { text-align: center; vertical-align: middle; }
+    .perm-table .perm-label { text-align: left; font-size: 0.85rem; }
+    .level-header { writing-mode: horizontal-tb; font-weight: 600; }
+    .section-label { font-weight: 600; background-color: rgba(0,0,0,.03); }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-sliders"></i> Permission Levels</h1>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Fixed Levels</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center">
+                    <h6 class="text-muted">Level 0</h6>
+                    <strong>Deactivated</strong>
+                    <p class="text-muted small mb-0">Cannot log in. No access.</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center">
+                    <h6 class="text-muted">Level 1</h6>
+                    <strong>Standard User</strong>
+                    <p class="text-muted small mb-0">Can manage own entries only.</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center">
+                    <h6 class="text-muted">Level 2</h6>
+                    <strong>Entry Reviewer</strong>
+                    <p class="text-muted small mb-0">Can view all entries, action & deny.</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center bg-light">
+                    <h6 class="text-muted">Level 7</h6>
+                    <strong class="text-danger">Full Admin</strong>
+                    <p class="text-muted small mb-0">All permissions granted.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Configurable Levels (3–6)</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.permission_levels') }}">
+            <!-- Level Names -->
+            <div class="row mb-4">
+                {% for level in range(3, 7) %}
+                <div class="col-md-3">
+                    <label for="name_{{ level }}" class="form-label fw-bold">Level {{ level }} Name</label>
+                    <input type="text" class="form-control" id="name_{{ level }}" name="name_{{ level }}"
+                           value="{{ configs[level].name if level in configs else '' }}" maxlength="50"
+                           placeholder="e.g. Supervisor">
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Permission Grid -->
+            <div class="table-responsive">
+                <table class="table table-bordered perm-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 250px;">Permission</th>
+                            {% for level in range(3, 7) %}
+                            <th class="text-center level-header" style="min-width: 100px;">
+                                Level {{ level }}<br>
+                                <small class="text-muted">{{ configs[level].name if level in configs else '' }}</small>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- User Management -->
+                        <tr><td colspan="5" class="section-label"><i class="bi bi-people"></i> User Management</td></tr>
+                        {% for perm in ['can_manage_users', 'can_change_user_level', 'can_deactivate_users', 'can_delete_users'] %}
+                        <tr>
+                            <td class="perm-label">
+                                {{ perm.replace('can_', '').replace('_', ' ').title() }}
+                            </td>
+                            {% for level in range(3, 7) %}
+                            <td>
+                                <div class="form-check d-flex justify-content-center">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="{{ perm }}_{{ level }}" id="{{ perm }}_{{ level }}"
+                                           {{ 'checked' if level in configs and configs[level].__dict__.get(perm) }}>
+                                </div>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Content Management -->
+                        <tr><td colspan="5" class="section-label"><i class="bi bi-folder"></i> Content Management</td></tr>
+                        {% for perm in ['can_manage_roles', 'can_manage_categories'] %}
+                        <tr>
+                            <td class="perm-label">
+                                {{ perm.replace('can_', '').replace('_', ' ').title() }}
+                            </td>
+                            {% for level in range(3, 7) %}
+                            <td>
+                                <div class="form-check d-flex justify-content-center">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="{{ perm }}_{{ level }}" id="{{ perm }}_{{ level }}"
+                                           {{ 'checked' if level in configs and configs[level].__dict__.get(perm) }}>
+                                </div>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Entry Review -->
+                        <tr><td colspan="5" class="section-label"><i class="bi bi-check2-square"></i> Entry Review</td></tr>
+                        {% for perm in ['can_view_all_entries', 'can_action_entries', 'can_deny_entries'] %}
+                        <tr>
+                            <td class="perm-label">
+                                {{ perm.replace('can_', '').replace('_', ' ').title() }}
+                            </td>
+                            {% for level in range(3, 7) %}
+                            <td>
+                                <div class="form-check d-flex justify-content-center">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="{{ perm }}_{{ level }}" id="{{ perm }}_{{ level }}"
+                                           {{ 'checked' if level in configs and configs[level].__dict__.get(perm) }}>
+                                </div>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Audit & Statistics -->
+                        <tr><td colspan="5" class="section-label"><i class="bi bi-graph-up"></i> Audit & Statistics</td></tr>
+                        {% for perm in ['can_view_audit_log', 'can_view_statistics'] %}
+                        <tr>
+                            <td class="perm-label">
+                                {{ perm.replace('can_', '').replace('_', ' ').title() }}
+                            </td>
+                            {% for level in range(3, 7) %}
+                            <td>
+                                <div class="form-check d-flex justify-content-center">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="{{ perm }}_{{ level }}" id="{{ perm }}_{{ level }}"
+                                           {{ 'checked' if level in configs and configs[level].__dict__.get(perm) }}>
+                                </div>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Settings -->
+                        <tr><td colspan="5" class="section-label"><i class="bi bi-gear"></i> Settings</td></tr>
+                        {% for perm in ['can_edit_setting_display_name', 'can_edit_setting_password_reset', 'can_edit_setting_profile_pic', 'can_edit_setting_leaderboard_size', 'can_edit_setting_footer_text'] %}
+                        <tr>
+                            <td class="perm-label">
+                                {{ perm.replace('can_edit_setting_', '').replace('_', ' ').title() }}
+                            </td>
+                            {% for level in range(3, 7) %}
+                            <td>
+                                <div class="form-check d-flex justify-content-center">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="{{ perm }}_{{ level }}" id="{{ perm }}_{{ level }}"
+                                           {{ 'checked' if level in configs and configs[level].__dict__.get(perm) }}>
+                                </div>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-between mt-3">
+                <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Admin
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Save Permission Levels
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

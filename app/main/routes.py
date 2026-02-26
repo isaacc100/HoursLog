@@ -41,31 +41,31 @@ def dashboard():
         .order_by(LogEntry.date.desc())\
         .paginate(page=page, per_page=10, error_out=False)
     
-    # Calculate statistics - activity hours only
+    # Calculate statistics - exclude denied entries
     total_activity_hours = db.session.query(func.sum(LogEntry.hours))\
-        .filter_by(user_id=current_user.id).scalar() or 0
+        .filter(LogEntry.user_id == current_user.id, LogEntry.review_status != 'denied').scalar() or 0
     
     # Travel hours
     total_travel_hours = db.session.query(func.sum(LogEntry.travel_hours))\
-        .filter_by(user_id=current_user.id).scalar() or 0
+        .filter(LogEntry.user_id == current_user.id, LogEntry.review_status != 'denied').scalar() or 0
     
     # Total = activity + travel
     total_hours = total_activity_hours + total_travel_hours
     
-    total_entries = LogEntry.query.filter_by(user_id=current_user.id).count()
+    total_entries = LogEntry.query.filter(LogEntry.user_id == current_user.id, LogEntry.review_status != 'denied').count()
     
-    # Hours by category (total = activity + travel)
+    # Hours by category (total = activity + travel, exclude denied)
     hours_by_category = db.session.query(
         Category.name,
         func.sum(LogEntry.hours + LogEntry.travel_hours).label('total')
-    ).join(LogEntry).filter(LogEntry.user_id == current_user.id)\
+    ).join(LogEntry, LogEntry.category_id == Category.id).filter(LogEntry.user_id == current_user.id, LogEntry.review_status != 'denied')\
         .group_by(Category.name).all()
     
-    # Hours by role (total = activity + travel)
+    # Hours by role (total = activity + travel, exclude denied)
     hours_by_role = db.session.query(
         Role.name,
         func.sum(LogEntry.hours + LogEntry.travel_hours).label('total')
-    ).join(LogEntry).filter(LogEntry.user_id == current_user.id)\
+    ).join(LogEntry, LogEntry.role_id == Role.id).filter(LogEntry.user_id == current_user.id, LogEntry.review_status != 'denied')\
         .group_by(Role.name).all()
     
     # === Leaderboard ===
@@ -91,7 +91,7 @@ def dashboard():
         User.last_name,
         func.sum(LogEntry.hours + LogEntry.travel_hours).label('total_hours')
     ).join(LogEntry, User.id == LogEntry.user_id)\
-        .filter(User.is_active == True)
+        .filter(User.permission_level > 0)
     
     if date_filter:
         leaderboard_query = leaderboard_query.filter(LogEntry.date >= date_filter)
@@ -111,10 +111,10 @@ def dashboard():
     
     leaderboard = all_ranked[:settings.leaderboard_size]
     
-    # For admin: list of all users for export user-picker
+    # For users who can view all entries: list of users for export user-picker
     all_users = []
-    if current_user.is_admin:
-        all_users = User.query.filter(User.id != current_user.id, User.is_active == True)\
+    if current_user.can('can_view_all_entries'):
+        all_users = User.query.filter(User.id != current_user.id, User.permission_level > 0)\
             .order_by(User.username).all()
     
     return render_template('main/dashboard.html',
@@ -183,7 +183,7 @@ def edit_log(id):
     """Edit an existing log entry."""
     entry = LogEntry.query.get_or_404(id)
     
-    # Check if user owns this entry
+    # Check if user owns this entry (level 7 admins can edit any)
     if entry.user_id != current_user.id and not current_user.is_admin:
         flash('You do not have permission to edit this entry.', 'danger')
         return redirect(url_for('main.dashboard'))
@@ -235,7 +235,7 @@ def delete_log(id):
     """Delete a log entry."""
     entry = LogEntry.query.get_or_404(id)
     
-    # Check if user owns this entry
+    # Check if user owns this entry (level 7 admins can delete any)
     if entry.user_id != current_user.id and not current_user.is_admin:
         flash('You do not have permission to delete this entry.', 'danger')
         return redirect(url_for('main.dashboard'))
@@ -356,9 +356,9 @@ def delete_account():
         flash('Account deletion failed. You must type the confirmation phrase exactly.', 'danger')
         return redirect(url_for('main.profile'))
 
-    # Prevent the last admin from deleting themselves
-    if current_user.is_admin:
-        admin_count = User.query.filter_by(is_admin=True, is_active=True).count()
+    # Prevent the last level-7 admin from deleting themselves
+    if current_user.permission_level == 7:
+        admin_count = User.query.filter(User.permission_level == 7).count()
         if admin_count <= 1:
             flash('You are the only administrator. You cannot delete your account until another admin is appointed.', 'danger')
             return redirect(url_for('main.profile'))
@@ -444,10 +444,10 @@ def roles():
 def _export_target_user():
     """Return the User whose data should be exported.
 
-    Admins may pass ?user_id=<id>; everyone else always gets their own.
+    Users who can view all entries may pass ?user_id=<id>; everyone else gets their own.
     """
     user_id = request.args.get('user_id', type=int)
-    if user_id and current_user.is_admin and user_id != current_user.id:
+    if user_id and current_user.can('can_view_all_entries') and user_id != current_user.id:
         target = User.query.get(user_id)
         if target:
             return target

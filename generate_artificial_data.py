@@ -166,8 +166,7 @@ def seed_artificial_data(
             first_name=f"Artificial{idx}",
             last_name="User",
             display_name=f"Artificial User {idx}",
-            is_admin=False,
-            is_active=True,
+            permission_level=1,
             email_verified=True,
         )
         user.set_password(password)
