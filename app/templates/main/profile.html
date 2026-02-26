@@ -165,6 +165,49 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- Delete Account -->
+        <div class="card mt-4 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill"></i> Delete Account</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    <strong>Warning:</strong> This action is <strong>permanent and irreversible</strong>.
+                    Deleting your account will remove:
+                    <ul class="mb-0 mt-2">
+                        <li>Your user profile and login credentials</li>
+                        <li>All of your logged hours and entries</li>
+                        <li>Your audit history</li>
+                        <li>Your profile picture</li>
+                    </ul>
+                </div>
+                <p>To confirm, type <strong>I want to delete my data</strong> in the box below and click the button.</p>
+                <form method="POST" action="{{ url_for('main.delete_account') }}" id="deleteAccountForm">
+                    <div class="mb-3">
+                        <input type="text" class="form-control" name="confirmation" id="deleteConfirmation"
+                               placeholder="Type: I want to delete my data" autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn btn-danger" id="deleteAccountBtn" disabled>
+                        <i class="bi bi-trash-fill"></i> Permanently Delete My Account
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+    document.getElementById('deleteConfirmation').addEventListener('input', function () {
+        var btn = document.getElementById('deleteAccountBtn');
+        btn.disabled = this.value.trim() !== 'I want to delete my data';
+    });
+    document.getElementById('deleteAccountForm').addEventListener('submit', function (e) {
+        if (document.getElementById('deleteConfirmation').value.trim() !== 'I want to delete my data') {
+            e.preventDefault();
+            return false;
+        }
+        return confirm('Are you absolutely sure? This cannot be undone.');
+    });
+</script>
 {% endblock %}

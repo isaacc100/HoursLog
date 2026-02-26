@@ -347,6 +347,53 @@ def profile():
                          settings=settings)
 
 
+@bp.route('/delete-account', methods=['POST'])
+@login_required
+def delete_account():
+    """Delete current user's account and all associated data."""
+    confirmation = request.form.get('confirmation', '').strip()
+    if confirmation != 'I want to delete my data':
+        flash('Account deletion failed. You must type the confirmation phrase exactly.', 'danger')
+        return redirect(url_for('main.profile'))
+
+    # Prevent the last admin from deleting themselves
+    if current_user.is_admin:
+        admin_count = User.query.filter_by(is_admin=True, is_active=True).count()
+        if admin_count <= 1:
+            flash('You are the only administrator. You cannot delete your account until another admin is appointed.', 'danger')
+            return redirect(url_for('main.profile'))
+
+    user = User.query.get(current_user.id)
+    username = user.username
+
+    # Remove avatar file if present
+    if user.profile_pic:
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        pic_path = os.path.join(upload_folder, user.profile_pic)
+        if os.path.exists(pic_path):
+            os.remove(pic_path)
+
+    # Clear secondary-role associations for this user's log entries
+    from app.models import log_entry_secondary_roles
+    entry_ids = [e.id for e in user.log_entries.all()]
+    if entry_ids:
+        db.session.execute(
+            log_entry_secondary_roles.delete().where(
+                log_entry_secondary_roles.c.log_entry_id.in_(entry_ids)
+            )
+        )
+
+    # Log out before deleting
+    from flask_login import logout_user
+    logout_user()
+
+    db.session.delete(user)
+    db.session.commit()
+
+    flash(f'Account "{username}" and all associated data have been permanently deleted.', 'success')
+    return redirect(url_for('main.index'))
+
+
 @bp.route('/profile/remove-pic', methods=['POST'])
 @login_required
 def remove_profile_pic():

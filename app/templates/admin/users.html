@@ -54,6 +54,10 @@
                                     {% if user.is_admin %}Revoke Admin{% else %}Make Admin{% endif %}
                                 </button>
                             </form>
+                            <!-- Delete User Button (triggers modal) -->
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteUserModal{{ user.id }}">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
                             {% endif %}
                         </td>
                     </tr>
@@ -89,4 +93,64 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Delete User Modals -->
+{% for user in users.items %}
+{% if user.id != current_user.id %}
+<div class="modal fade" id="deleteUserModal{{ user.id }}" tabindex="-1" aria-labelledby="deleteUserModalLabel{{ user.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteUserModalLabel{{ user.id }}">
+                    <i class="bi bi-exclamation-triangle-fill"></i> Delete User "{{ user.username }}"
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>Warning:</strong> This action is <strong>permanent and irreversible</strong>.
+                    Deleting this user will remove:
+                    <ul class="mb-0 mt-2">
+                        <li>Their user profile and login credentials</li>
+                        <li>All of their logged hours and entries</li>
+                        <li>Their audit history</li>
+                        <li>Their profile picture</li>
+                    </ul>
+                </div>
+                <p>To confirm, type <strong>I want to delete my data</strong> in the box below.</p>
+                <form method="POST" action="{{ url_for('admin.delete_user', id=user.id) }}" id="deleteUserForm{{ user.id }}">
+                    <div class="mb-3">
+                        <input type="text" class="form-control delete-user-confirm" name="confirmation"
+                               data-user-id="{{ user.id }}" placeholder="Type: I want to delete my data" autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn btn-danger delete-user-btn" id="deleteUserBtn{{ user.id }}" disabled>
+                        <i class="bi bi-trash-fill"></i> Permanently Delete User
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<script>
+    document.querySelectorAll('.delete-user-confirm').forEach(function (input) {
+        var userId = input.getAttribute('data-user-id');
+        input.addEventListener('input', function () {
+            var btn = document.getElementById('deleteUserBtn' + userId);
+            btn.disabled = this.value.trim() !== 'I want to delete my data';
+        });
+    });
+    document.querySelectorAll('[id^="deleteUserForm"]').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            var input = form.querySelector('.delete-user-confirm');
+            if (input.value.trim() !== 'I want to delete my data') {
+                e.preventDefault();
+                return false;
+            }
+            return confirm('Are you absolutely sure? This cannot be undone.');
+        });
+    });
+</script>
 {% endblock %}

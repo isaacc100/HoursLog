@@ -404,6 +404,67 @@ def edit_role(id):
                          role=role)
 
 
+@bp.route('/user/<int:id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_user(id):
+    """Permanently delete a user and all associated data."""
+    user = User.query.get_or_404(id)
+
+    # Prevent self-deletion through admin panel (use profile page instead)
+    if user.id == current_user.id:
+        flash('To delete your own account, use the option on your Profile page.', 'warning')
+        return redirect(url_for('admin.users'))
+
+    # Prevent deleting the last admin
+    if user.is_admin:
+        admin_count = User.query.filter_by(is_admin=True, is_active=True).count()
+        if admin_count <= 1:
+            flash('Cannot delete the only remaining administrator.', 'danger')
+            return redirect(url_for('admin.users'))
+
+    confirmation = request.form.get('confirmation', '').strip()
+    if confirmation != 'I want to delete my data':
+        flash('Deletion failed. The confirmation phrase was not entered correctly.', 'danger')
+        return redirect(url_for('admin.users'))
+
+    username = user.username
+
+    # Remove avatar file if present
+    import os
+    from flask import current_app
+    if user.profile_pic:
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        pic_path = os.path.join(upload_folder, user.profile_pic)
+        if os.path.exists(pic_path):
+            os.remove(pic_path)
+
+    # Clear secondary-role associations for this user's log entries
+    from app.models import log_entry_secondary_roles
+    entry_ids = [e.id for e in user.log_entries.all()]
+    if entry_ids:
+        db.session.execute(
+            log_entry_secondary_roles.delete().where(
+                log_entry_secondary_roles.c.log_entry_id.in_(entry_ids)
+            )
+        )
+
+    # Audit log (record before deleting so we keep a trace)
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action='user_deleted',
+        details=f'Admin {current_user.username} permanently deleted user "{username}" (id={id})',
+        ip_address=request.remote_addr
+    )
+    db.session.add(audit_log)
+
+    db.session.delete(user)
+    db.session.commit()
+
+    flash(f'User "{username}" and all associated data have been permanently deleted.', 'success')
+    return redirect(url_for('admin.users'))
+
+
 @bp.route('/roles/<int:id>/toggle_active', methods=['POST'])
 @login_required
 @admin_required
