@@ -22,20 +22,31 @@ from app.models import Category, LogEntry, Role, User
 
 
 DEFAULT_CATEGORIES: list[tuple[str, str, str]] = [
-    ("Tutoring", "Educational tutoring activities", "#007bff"),
-    ("Food Service", "Food preparation and distribution", "#28a745"),
-    ("Event Planning", "Organizing and managing events", "#ffc107"),
-    ("Administrative", "Office and administrative work", "#6c757d"),
-    ("Outreach", "Community outreach programs", "#17a2b8"),
-    ("Fundraising", "Fundraising activities", "#dc3545"),
+    ("Service Delivery", "Providing service delivery such as first aid events, night-time economy, hospital volunteering, logistics and community advocacy", "#007bff"),
+    ("Community Service", "Participating in organised community activities such as visiting hospitals or care homes or supporting the elderly or disabled", "#28a745"),
+    ("Badger Support", "Helping with Badgers as a Badger Helper", "#28a745"),
+    ("Event Planning", "Planning, delivering, or supporting internal competitions as an organiser, steward, or judge", "#ffc107"),
+    ("Cadet Events", "Helping to organise events for other cadets and young people", "#ffc107"),
+    ("Training Delivery", "Planning and delivering training inside or outside a unit, such as running courses or helping with Grand Prior subjects", "#17a2b8"),
+    ("Unit Support", "Planning and delivering additional activities for a unit such as games, tuck-shops, or activity sessions", "#6c757d"),
+    ("Youth Representation", "Representing young people through platforms such as Youth Forums or Regional Youth Team meetings", "#6c757d"),
+    ("Maintenance & Cleaning", "Involvement in cleaning or maintaining St John buildings or property", "#795548"),
+    ("Fundraising", "Fundraising activities for St John Ambulance, the Order of St John, or St John Eye Hospital", "#dc3545"),
+    ("Ceremonial Participation", "Taking part in formal parades or acting as a lining (flag) party", "#9c27b0"),
+    ("Competitions", "Involvement or competition in external or inter-unit competitions", "#3f51b5"),
+    ("Public Representation", "Involvement in external representation events outside of unit hours", "#00bcd4"),
+    ("Travel", "Travel time to and from qualifying cadet volunteer activities", "#8bc34a"),
 ]
 
 DEFAULT_ROLES: list[tuple[str, str]] = [
-    ("Volunteer", "General volunteer role"),
-    ("Team Lead", "Leading a team of volunteers"),
-    ("Coordinator", "Coordinating activities"),
-    ("Trainer", "Training other volunteers"),
-    ("Supervisor", "Supervising activities"),
+    ("Cadet Logistics Role", "Any Cadet volunteering in logistics"),
+    ("Cadet Event Manager", "Any Cadet volunteering in Event Management Roles such as Bronze Officer or Treatment Center Manager"),
+    ("Cadet Emergency Responder", "Cadet Operational role for CER"),
+    ("Cadet Community First Aider", "Cadet Operational role for CCFA"),
+    ("Cadet", "Cadet Operational role for 10HrFA"),
+    ("Cadet of the Year Team", "Any activities undertaken as a Cadet of the Year"),
+    ("Cadet Non-Commissioned Officer", "Any activities undertaken as a Corporal, Sergeant, or Leading Cadet"),
+    ("Cadet Leadership Roles", "Any other leadership roles, such as Youth Operations or St John Assembly Member"),
 ]
 
 
@@ -163,14 +174,44 @@ def seed_artificial_data(
         db.session.add(user)
         db.session.flush()  # assign user.id for FK usage
 
+        # --- Per-user random weighting ---------------------------------
+        # Each user gets a unique preference profile so the generated
+        # data looks more organic (some users favour certain categories
+        # or roles, log shorter/longer shifts, etc.).
+        cat_weights = [random.expovariate(1) for _ in categories]
+        role_weights = [random.expovariate(1) for _ in roles]
+
+        # Personal hour-range tendencies (still quarter-hour)
+        user_min_hours = round(random.uniform(0.5, 3.0), 2)
+        user_max_hours = round(random.uniform(user_min_hours + 0.5, 12.0), 2)
+        user_travel_max = round(random.uniform(0.0, 4.0), 2)
+
+        # Some users cluster entries on weekends, others on weekdays
+        weekend_bias = random.random()  # 0→weekday-heavy, 1→weekend-heavy
+        # ---------------------------------------------------------------
+
         entry_count = random.randint(min_entries, max_entries)
         for _ in range(entry_count):
-            category = random.choice(categories)
-            role = random.choice(roles)
+            category = random.choices(categories, weights=cat_weights, k=1)[0]
+            role = random.choices(roles, weights=role_weights, k=1)[0]
 
-            activity_hours = _quarter_hour(1.0, 12.0)
-            travel_hours = _quarter_hour(0.0, 8.0)
-            entry_date = today - timedelta(days=random.randint(0, days_back - 1))
+            activity_hours = _quarter_hour(user_min_hours, user_max_hours)
+            travel_hours = _quarter_hour(0.0, user_travel_max)
+
+            # Weighted date selection: bias toward weekends or weekdays
+            raw_day = random.randint(0, days_back - 1)
+            entry_date = today - timedelta(days=raw_day)
+            is_weekend = entry_date.weekday() >= 5
+            if is_weekend and random.random() > weekend_bias:
+                # Re-roll to a weekday
+                raw_day = random.randint(0, days_back - 1)
+                entry_date = today - timedelta(days=raw_day)
+            elif not is_weekend and random.random() < weekend_bias * 0.4:
+                # Nudge toward a nearby weekend day
+                offset = (5 - entry_date.weekday()) % 7 or 7
+                entry_date = entry_date + timedelta(days=offset)
+                if entry_date > today:
+                    entry_date = today
 
             entry = LogEntry(
                 user_id=user.id,

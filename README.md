@@ -78,8 +78,8 @@ source venv/bin/activate
    ```
    
    This creates:
-   - Default categories (Tutoring, Food Service, Event Planning, etc.)
-   - Default roles (Volunteer, Team Lead, Coordinator, etc.)
+   - Default categories (Service Delivery, Community Service, Event Planning, Fundraising, etc.)
+   - Default roles (Cadet Logistics Role, Cadet Event Manager, Cadet Emergency Responder, etc.)
    - Admin user with a secure random password (displayed once)
    - Default application settings (leaderboard size and profile permissions)
    
@@ -98,6 +98,41 @@ source venv/bin/activate
 7. **Access the application**
    - Open your browser and navigate to: `http://localhost:5000`
    - Login with the admin credentials shown during database initialization
+
+### Codespaces Quickstart (Recommended)
+
+If you are running this project in GitHub Codespaces, use this flow instead of installing globally:
+
+1. **Bootstrap environment once**
+   ```bash
+   ./scripts/setup_codespaces.sh
+   ```
+
+2. **Activate the virtual environment**
+   ```bash
+   source .venv/bin/activate
+   ```
+
+3. **Initialize database**
+   ```bash
+   flask --app main init-db
+   ```
+
+4. **Run app**
+   ```bash
+   python main.py
+   ```
+
+5. **Open forwarded port**
+   - The app listens on port `8080`.
+   - In Codespaces, open the **Ports** panel and open port `8080` in browser.
+
+If you ever see `Address already in use` for port `8080`, stop old Flask processes and re-run:
+
+```bash
+lsof -i :8080 -P -n
+kill <pid>
+```
 
 ## Usage
 

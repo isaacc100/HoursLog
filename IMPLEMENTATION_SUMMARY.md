@@ -61,8 +61,8 @@ Successfully implemented a comprehensive volunteer hours tracking web applicatio
 ### 8. Database Features
 - SQLite by default (configurable to PostgreSQL/MySQL)
 - Database initialization CLI command
-- Default categories: Tutoring, Food Service, Event Planning, Administrative, Outreach, Fundraising
-- Default roles: Volunteer, Team Lead, Coordinator, Trainer, Supervisor
+- Default categories: Service Delivery, Community Service, Badger Support, Event Planning, Cadet Events, Training Delivery, Unit Support, Youth Representation, Maintenance & Cleaning, Fundraising, Ceremonial Participation, Competitions, Public Representation, Travel
+- Default roles: Cadet Logistics Role, Cadet Event Manager, Cadet Emergency Responder, Cadet Community First Aider, Cadet, Cadet of the Year Team, Cadet Non-Commissioned Officer, Cadet Leadership Roles
 - Proper foreign key relationships
 - Cascade delete for related records
 
