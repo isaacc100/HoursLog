@@ -1,10 +1,14 @@
-from flask import Flask
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
+from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_bcrypt import Bcrypt
 from flask_mail import Mail
 from flask_migrate import Migrate
-from config import Config
+from config import config as config_map, DevelopmentConfig
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -14,42 +18,96 @@ mail = Mail()
 migrate = Migrate()
 
 
-def create_app(config_class=Config):
-    """Application factory pattern."""
+def create_app(config_name=None):
+    """Application factory pattern.
+
+    Parameters
+    ----------
+    config_name : str or config class, optional
+        Either a string key ('development', 'production', 'testing') that is
+        looked up in ``config_map``, or a config class directly.  When *None*
+        the value of the ``FLASK_ENV`` environment variable is used, falling
+        back to ``'development'``.
+    """
     app = Flask(__name__)
+
+    # Resolve configuration
+    if config_name is None:
+        config_name = os.environ.get('FLASK_ENV', 'development')
+    if isinstance(config_name, str):
+        config_class = config_map.get(config_name)
+        if config_class is None:
+            raise ValueError(
+                f"Unknown configuration '{config_name}'. "
+                f"Valid options: {', '.join(config_map.keys())}"
+            )
+    else:
+        config_class = config_name  # allow passing a class directly
+
     app.config.from_object(config_class)
-    
+
+    # ---- Production guards ----------------------------------------------
+    if config_name == 'production' or (isinstance(config_name, type)
+                                        and not getattr(config_class, 'DEBUG', True)):
+        if not app.config.get('SECRET_KEY'):
+            raise ValueError(
+                'SECRET_KEY environment variable must be set in production.\n'
+                'Generate one with:  python -c "import secrets; print(secrets.token_hex(32))"'
+            )
+        if not app.config.get('SQLALCHEMY_DATABASE_URI'):
+            raise ValueError(
+                'DATABASE_URL environment variable must be set in production.\n'
+                'Example: postgresql://user:password@localhost:5432/hourslog'
+            )
+
+    # ---- Logging --------------------------------------------------------
+    _configure_logging(app)
+
     # Initialize extensions with app
     db.init_app(app)
     login_manager.init_app(app)
     bcrypt.init_app(app)
     mail.init_app(app)
     migrate.init_app(app, db)
-    
+
     # Configure login manager
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Please log in to access this page.'
     login_manager.login_message_category = 'info'
-    
+
     # Register blueprints
     from app.auth import bp as auth_bp
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    
+
     from app.main import bp as main_bp
     app.register_blueprint(main_bp)
-    
+
     from app.admin import bp as admin_bp
     app.register_blueprint(admin_bp, url_prefix='/admin')
-    
+
+    # ---- Health-check endpoint ------------------------------------------
+    @app.route('/health')
+    def health_check():
+        """Lightweight endpoint for load-balancers and monitoring."""
+        try:
+            from sqlalchemy import text
+            db.session.execute(text('SELECT 1'))
+            db_status = 'ok'
+        except Exception as exc:
+            app.logger.error('Health-check DB probe failed: %s', exc)
+            db_status = 'error'
+        status_code = 200 if db_status == 'ok' else 503
+        return jsonify(status='ok' if db_status == 'ok' else 'degraded',
+                       database=db_status), status_code
+
     # Create database tables
     with app.app_context():
         db.create_all()
         _migrate_permission_levels(app)
-    
+
     # Ensure upload directory exists
-    import os
     os.makedirs(app.config.get('UPLOAD_FOLDER', 'uploads'), exist_ok=True)
-    
+
     # Context processor — inject globals into all templates
     @app.context_processor
     def inject_globals():
@@ -66,8 +124,41 @@ def create_app(config_class=Config):
             google_sso_enabled=bool(app.config.get('GOOGLE_CLIENT_ID') and app.config.get('GOOGLE_CLIENT_SECRET')),
             azure_sso_enabled=bool(app.config.get('AZURE_CLIENT_ID') and app.config.get('AZURE_CLIENT_SECRET')),
         )
-    
+
+    app.logger.info('HoursLog started [env=%s]', config_name)
     return app
+
+
+def _configure_logging(app):
+    """Set up logging appropriate to the current environment."""
+    formatter = logging.Formatter(
+        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
+    )
+
+    # Always log to stderr
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+
+    if app.config.get('DEBUG'):
+        app.logger.setLevel(logging.DEBUG)
+        stream_handler.setLevel(logging.DEBUG)
+    else:
+        app.logger.setLevel(logging.WARNING)
+        stream_handler.setLevel(logging.WARNING)
+
+        # In production also write to a rotating log file
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(log_dir, 'hourslog.log'),
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=5,
+        )
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(logging.WARNING)
+        app.logger.addHandler(file_handler)
+
+    app.logger.addHandler(stream_handler)
 
 
 def _migrate_permission_levels(app):

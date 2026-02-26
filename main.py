@@ -207,6 +207,6 @@ def reset_db():
 
 if __name__ == '__main__':
     import os
-    # Only enable debug in development, never in production
-    debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    app.run(debug=debug_mode, host='0.0.0.0', port=8080)
+    # Always use development config when running main.py directly
+    os.environ.setdefault('FLASK_ENV', 'development')
+    app.run(debug=True, host='0.0.0.0', port=8080)
