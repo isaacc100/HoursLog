@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Data Agreement - HoursLog{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-shield-check"></i> Data Collection Agreement</h4>
+            </div>
+            <div class="card-body">
+                <p>By selecting &ldquo;Accept&rdquo;, you agree that this app may collect and store the following information:</p>
+                <ul>
+                    <li>Your name</li>
+                    <li>Your email address</li>
+                    <li>The data you enter while using the app</li>
+                </ul>
+                <p>This information is stored securely using Supabase, a third&#8209;party backend service.</p>
+                <p>I take reasonable measures to protect your data; however, I cannot be held responsible for security breaches, data leaks, or failures caused by Supabase or any other external service providers outside of my control.</p>
+                <p>Your data will only be used for the intended functionality of this app and will not be sold or shared with third parties.</p>
+                <p>You may request deletion of your data at any time by going to <strong>Profile &rarr; Delete Account</strong>.</p>
+                <p>If you do not agree to these terms and select &ldquo;Deny&rdquo;, your account will not be created and no data will be stored.</p>
+            </div>
+            <div class="card-footer d-flex justify-content-end gap-2">
+                <form method="POST" action="{{ url_for('auth.sso_agreement') }}" style="display:inline;">
+                    <input type="hidden" name="action" value="deny">
+                    <button type="submit" class="btn btn-secondary"><i class="bi bi-x-circle"></i> Deny</button>
+                </form>
+                <form method="POST" action="{{ url_for('auth.sso_agreement') }}" style="display:inline;">
+                    <input type="hidden" name="action" value="accept">
+                    <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Accept</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

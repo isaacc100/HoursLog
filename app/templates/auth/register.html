@@ -8,8 +8,9 @@
         <div class="card">
             <div class="card-body">
                 <h2 class="card-title text-center mb-4">Register</h2>
-                <form method="POST" action="">
+                <form method="POST" action="" id="registerForm">
                     {{ form.hidden_tag() }}
+                    <input type="hidden" name="agreement_accepted" id="agreementAccepted" value="">
                     
                     <div class="mb-3">
                         {{ form.username.label(class="form-label") }}
@@ -71,7 +72,7 @@
                     </div>
                     
                     <div class="d-grid">
-                        {{ form.submit(class="btn btn-primary") }}
+                        <button type="button" class="btn btn-primary" id="registerBtn">Register</button>
                     </div>
                 </form>
                 
@@ -108,4 +109,43 @@
         </div>
     </div>
 </div>
+
+<!-- Data Agreement Modal -->
+<div class="modal fade" id="agreementModal" tabindex="-1" aria-labelledby="agreementModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="agreementModalLabel"><i class="bi bi-shield-check"></i> Data Collection Agreement</h5>
+            </div>
+            <div class="modal-body">
+                <p>By selecting &ldquo;Accept&rdquo;, you agree that this app may collect and store the following information:</p>
+                <ul>
+                    <li>Your name</li>
+                    <li>Your email address</li>
+                    <li>The data you enter while using the app</li>
+                </ul>
+                <p>This information is stored securely using Supabase, a third&#8209;party backend service.</p>
+                <p>I take reasonable measures to protect your data; however, I cannot be held responsible for security breaches, data leaks, or failures caused by Supabase or any other external service providers outside of my control.</p>
+                <p>Your data will only be used for the intended functionality of this app and will not be sold or shared with third parties.</p>
+                <p>You may request deletion of your data at any time by going to <strong>Profile &rarr; Delete Account</strong>.</p>
+                <p>If you do not agree to these terms and select &ldquo;Deny&rdquo;, your account will not be created and no data will be stored.</p>
+            </div>
+            <div class="modal-footer">
+                <a href="{{ url_for('auth.login') }}" class="btn btn-secondary" id="denyBtn"><i class="bi bi-x-circle"></i> Deny</a>
+                <button type="button" class="btn btn-success" id="acceptBtn"><i class="bi bi-check-circle"></i> Accept</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('registerBtn').addEventListener('click', function () {
+        var modal = new bootstrap.Modal(document.getElementById('agreementModal'));
+        modal.show();
+    });
+    document.getElementById('acceptBtn').addEventListener('click', function () {
+        document.getElementById('agreementAccepted').value = 'true';
+        document.getElementById('registerForm').submit();
+    });
+</script>
 {% endblock %}

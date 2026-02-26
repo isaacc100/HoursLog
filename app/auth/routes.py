@@ -57,6 +57,11 @@ def register():
     
     form = RegistrationForm()
     if form.validate_on_submit():
+        # Require agreement acceptance
+        if request.form.get('agreement_accepted') != 'true':
+            flash('You must accept the data collection agreement to create an account.', 'danger')
+            return render_template('auth/register.html', title='Register', form=form)
+
         user = User(
             username=form.username.data,
             email=form.email.data,
@@ -113,34 +118,14 @@ def _sso_login_or_register(email, first_name, last_name, provider):
         return redirect(url_for('auth.login'))
 
     if not user:
-        # Auto-register
-        base_username = email.split('@')[0]
-        username = base_username
-        counter = 1
-        while User.query.filter_by(username=username).first():
-            username = f"{base_username}{counter}"
-            counter += 1
-
-        user = User(
-            username=username,
-            email=email,
-            first_name=first_name or '',
-            last_name=last_name or '',
-            email_verified=True,
-        )
-        # Set an unusable random password so normal login is blocked
-        user.password_hash = bcrypt.generate_password_hash(secrets.token_hex(32)).decode('utf-8')
-        db.session.add(user)
-        db.session.commit()
-
-        audit_log = AuditLog(
-            user_id=user.id,
-            action='sso_registration',
-            details=f'New user registered via {provider} SSO: {user.username}',
-            ip_address=request.remote_addr,
-        )
-        db.session.add(audit_log)
-        db.session.commit()
+        # New SSO user – store data in session and redirect to agreement page
+        session['pending_sso'] = {
+            'email': email,
+            'first_name': first_name or '',
+            'last_name': last_name or '',
+            'provider': provider,
+        }
+        return redirect(url_for('auth.sso_agreement'))
 
     login_user(user, remember=True)
     user.last_login = datetime.utcnow()
@@ -156,6 +141,74 @@ def _sso_login_or_register(email, first_name, last_name, provider):
 
     flash(f'Welcome, {user.get_display_name}!', 'success')
     return redirect(url_for('main.index'))
+
+
+# ── SSO Data Agreement ─────────────────────────────────────────────────────
+@bp.route('/agreement', methods=['GET', 'POST'])
+def sso_agreement():
+    """Show data collection agreement for new SSO users."""
+    pending = session.get('pending_sso')
+    if not pending:
+        return redirect(url_for('auth.login'))
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'accept':
+            email = pending['email']
+            first_name = pending['first_name']
+            last_name = pending['last_name']
+            provider = pending['provider']
+            session.pop('pending_sso', None)
+
+            # Create the user account
+            base_username = email.split('@')[0]
+            username = base_username
+            counter = 1
+            while User.query.filter_by(username=username).first():
+                username = f"{base_username}{counter}"
+                counter += 1
+
+            user = User(
+                username=username,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                email_verified=True,
+            )
+            user.password_hash = bcrypt.generate_password_hash(secrets.token_hex(32)).decode('utf-8')
+            db.session.add(user)
+            db.session.commit()
+
+            audit_log = AuditLog(
+                user_id=user.id,
+                action='sso_registration',
+                details=f'New user registered via {provider} SSO: {user.username}',
+                ip_address=request.remote_addr,
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+
+            login_user(user, remember=True)
+            user.last_login = datetime.utcnow()
+
+            audit_log = AuditLog(
+                user_id=user.id,
+                action='sso_login',
+                details=f'User {user.username} logged in via {provider}',
+                ip_address=request.remote_addr,
+            )
+            db.session.add(audit_log)
+            db.session.commit()
+
+            flash(f'Welcome, {user.get_display_name}!', 'success')
+            return redirect(url_for('main.index'))
+        else:
+            # Deny
+            session.pop('pending_sso', None)
+            flash('Account was not created. No data has been stored.', 'info')
+            return redirect(url_for('auth.login'))
+
+    return render_template('auth/agreement.html', title='Data Agreement')
 
 
 # ── Google SSO ─────────────────────────────────────────────────────────────
