@@ -1,22 +1,51 @@
-.venv/
-venv/
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+
+# Env
+.env
+.env*.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
-env/
-.env
-.env*
+.venv/
+venv/
+*.egg-info/
+
+# IDE
 .vscode/
 .idea/
-*.egg-info/
-dist/
-build/
-.DS_Store
-pytest_cache/
-hourslog.db
+
+# Database
 *.db
-instance/
+hourslog.db
+
+# Old Flask artifacts
 migrations/
 uploads/
+logs/
+/src/generated/prisma
