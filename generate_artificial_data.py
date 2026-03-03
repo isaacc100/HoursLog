@@ -1,24 +1,29 @@
 """Generate artificial HoursLog data.
 
-Creates N artificial users and random log entries compatible with the existing
-SQLAlchemy models in this repo.
+Creates N artificial users and random log entries directly via psycopg2,
+compatible with the Prisma-managed PostgreSQL schema.
 
-Usage (PowerShell):
-    ./venv/Scripts/python.exe ./generate_artificial_data.py
+Usage:
+    pip install psycopg2-binary bcrypt python-dotenv
+    python generate_artificial_data.py
 
-By default, this seeds the configured database (see config.py / DATABASE_URL).
+By default, this seeds the database specified by DATABASE_URL in .env.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import string
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app import create_app, db
-from app.models import Category, LogEntry, Role, User
+import bcrypt
+import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 DEFAULT_CATEGORIES: list[tuple[str, str, str]] = [
@@ -57,65 +62,66 @@ class SeedResult:
     password_used: str
 
 
-def _ensure_defaults_exist() -> None:
+def _get_connection():
+    """Create a psycopg2 connection from DATABASE_URL."""
+    url = os.environ.get("DATABASE_URL", "")
+    # Strip SQLAlchemy dialect prefix if present
+    url = url.replace("postgresql+psycopg2://", "postgresql://")
+    if not url:
+        raise RuntimeError("DATABASE_URL not set. Check your .env file.")
+    return psycopg2.connect(url)
+
+
+def _hash_password(password: str) -> str:
+    """Hash a password using bcrypt (compatible with bcryptjs)."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(12)).decode("utf-8")
+
+
+def _ensure_defaults_exist(cur) -> None:
     """Ensure at least one active category and role exists."""
-    if not Category.query.first():
+    cur.execute("SELECT COUNT(*) FROM categories")
+    if cur.fetchone()[0] == 0:
         for name, description, color in DEFAULT_CATEGORIES:
-            db.session.add(Category(name=name, description=description, color=color, is_active=True))
+            cur.execute(
+                "INSERT INTO categories (name, description, color, is_active) VALUES (%s, %s, %s, true) ON CONFLICT (name) DO NOTHING",
+                (name, description, color),
+            )
 
-    if not Role.query.first():
+    cur.execute("SELECT COUNT(*) FROM roles")
+    if cur.fetchone()[0] == 0:
         for name, description in DEFAULT_ROLES:
-            db.session.add(Role(name=name, description=description, is_active=True))
-
-    db.session.commit()
+            cur.execute(
+                "INSERT INTO roles (name, description, is_active) VALUES (%s, %s, true) ON CONFLICT (name) DO NOTHING",
+                (name, description),
+            )
 
 
 def _quarter_hour(min_hours: float, max_hours: float) -> float:
-    """Random quarter-hour increment between bounds (inclusive)."""
     min_q = int(round(min_hours * 4))
     max_q = int(round(max_hours * 4))
     return random.randint(min_q, max_q) / 4.0
 
 
-def _random_activity_title(category: Category, role: Role) -> str:
-    verb = random.choice(
-        [
-            "Shift",
-            "Session",
-            "Support",
-            "Coverage",
-            "Assistance",
-            "Planning",
-            "Coordination",
-            "Training",
-        ]
-    )
+def _random_activity_title(cat_name: str, role_name: str) -> str:
+    verb = random.choice(["Shift", "Session", "Support", "Coverage", "Assistance", "Planning", "Coordination", "Training"])
     suffix = "".join(random.choice(string.ascii_uppercase) for _ in range(3))
-    return f"{category.name} {verb} ({role.name}) {suffix}"
+    return f"{cat_name} {verb} ({role_name}) {suffix}"
 
 
-def _maybe_secondary_roles(primary: Role, all_roles: list[Role], max_count: int) -> list[Role]:
-    candidates = [r for r in all_roles if r.id != primary.id]
-    if not candidates:
-        return []
-
-    count = random.randint(0, max_count)
-    if count <= 0:
-        return []
-
-    random.shuffle(candidates)
-    return candidates[:count]
-
-
-def _purge_existing(prefix: str) -> int:
-    """Delete users created by this generator (and their cascading log entries)."""
-    users = User.query.filter(User.username.like(f"{prefix}_%"))  # noqa: E712
-    deleted = 0
-    for user in users.all():
-        db.session.delete(user)
-        deleted += 1
-    db.session.commit()
-    return deleted
+def _purge_existing(cur, prefix: str) -> int:
+    cur.execute("SELECT id FROM users WHERE username LIKE %s", (f"{prefix}_%",))
+    user_ids = [row[0] for row in cur.fetchall()]
+    if not user_ids:
+        return 0
+    # Delete secondary role associations
+    cur.execute(
+        "DELETE FROM \"_SecondaryRoles\" WHERE \"A\" IN (SELECT id FROM log_entries WHERE user_id = ANY(%s))",
+        (user_ids,),
+    )
+    cur.execute("DELETE FROM log_entries WHERE user_id = ANY(%s)", (user_ids,))
+    cur.execute("DELETE FROM audit_logs WHERE user_id = ANY(%s)", (user_ids,))
+    cur.execute("DELETE FROM users WHERE id = ANY(%s)", (user_ids,))
+    return len(user_ids)
 
 
 def seed_artificial_data(
@@ -136,105 +142,114 @@ def seed_artificial_data(
     if days_back <= 0:
         raise ValueError("days_back must be > 0")
 
-    _ensure_defaults_exist()
+    conn = _get_connection()
+    cur = conn.cursor()
 
-    if purge:
-        _purge_existing(prefix)
+    try:
+        _ensure_defaults_exist(cur)
+        conn.commit()
 
-    categories = Category.query.filter_by(is_active=True).all() or Category.query.all()
-    roles = Role.query.filter_by(is_active=True).all() or Role.query.all()
+        if purge:
+            deleted = _purge_existing(cur, prefix)
+            conn.commit()
+            print(f"Purged {deleted} existing users with prefix '{prefix}_'")
 
-    if not categories:
-        raise RuntimeError("No categories exist; cannot create log entries")
-    if not roles:
-        raise RuntimeError("No roles exist; cannot create log entries")
+        # Fetch categories and roles
+        cur.execute("SELECT id, name FROM categories WHERE is_active = true ORDER BY name")
+        categories = cur.fetchall()  # list of (id, name)
+        cur.execute("SELECT id, name FROM roles WHERE is_active = true ORDER BY name")
+        roles = cur.fetchall()  # list of (id, name)
 
-    entries_created = 0
-    today = date.today()
+        if not categories:
+            raise RuntimeError("No categories exist; cannot create log entries")
+        if not roles:
+            raise RuntimeError("No roles exist; cannot create log entries")
 
-    for idx in range(1, user_count + 1):
-        username = f"{prefix}_{idx:03d}"
-        email = f"{username}@example.com"
+        password_hash = _hash_password(password)
+        entries_created = 0
+        users_created = 0
+        today = date.today()
 
-        # Ensure uniqueness if the script is run without purge.
-        if User.query.filter((User.username == username) | (User.email == email)).first():
-            continue
+        for idx in range(1, user_count + 1):
+            username = f"{prefix}_{idx:03d}"
+            email = f"{username}@example.com"
 
-        user = User(
-            username=username,
-            email=email,
-            first_name=f"Artificial{idx}",
-            last_name="User",
-            display_name=f"Artificial User {idx}",
-            permission_level=1,
-            email_verified=True,
-        )
-        user.set_password(password)
-        db.session.add(user)
-        db.session.flush()  # assign user.id for FK usage
+            # Check uniqueness
+            cur.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
+            if cur.fetchone():
+                continue
 
-        # --- Per-user random weighting ---------------------------------
-        # Each user gets a unique preference profile so the generated
-        # data looks more organic (some users favour certain categories
-        # or roles, log shorter/longer shifts, etc.).
-        cat_weights = [random.expovariate(1) for _ in categories]
-        role_weights = [random.expovariate(1) for _ in roles]
+            cur.execute(
+                """INSERT INTO users (username, email, password_hash, first_name, last_name,
+                   display_name, permission_level, email_verified, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, 1, true, NOW()) RETURNING id""",
+                (username, email, password_hash, f"Artificial{idx}", "User", f"Artificial User {idx}"),
+            )
+            user_id = cur.fetchone()[0]
+            users_created += 1
 
-        # Personal hour-range tendencies (still quarter-hour)
-        user_min_hours = round(random.uniform(0.5, 3.0), 2)
-        user_max_hours = round(random.uniform(user_min_hours + 0.5, 12.0), 2)
-        user_travel_max = round(random.uniform(0.0, 4.0), 2)
+            # Per-user random weighting
+            cat_weights = [random.expovariate(1) for _ in categories]
+            role_weights = [random.expovariate(1) for _ in roles]
+            user_min_hours = round(random.uniform(0.5, 3.0), 2)
+            user_max_hours = round(random.uniform(user_min_hours + 0.5, 12.0), 2)
+            user_travel_max = round(random.uniform(0.0, 4.0), 2)
+            weekend_bias = random.random()
 
-        # Some users cluster entries on weekends, others on weekdays
-        weekend_bias = random.random()  # 0→weekday-heavy, 1→weekend-heavy
-        # ---------------------------------------------------------------
+            entry_count = random.randint(min_entries, max_entries)
+            for _ in range(entry_count):
+                cat_id, cat_name = random.choices(categories, weights=cat_weights, k=1)[0]
+                role_id, role_name = random.choices(roles, weights=role_weights, k=1)[0]
 
-        entry_count = random.randint(min_entries, max_entries)
-        for _ in range(entry_count):
-            category = random.choices(categories, weights=cat_weights, k=1)[0]
-            role = random.choices(roles, weights=role_weights, k=1)[0]
+                activity_hours = _quarter_hour(user_min_hours, user_max_hours)
+                travel_hours = _quarter_hour(0.0, user_travel_max)
 
-            activity_hours = _quarter_hour(user_min_hours, user_max_hours)
-            travel_hours = _quarter_hour(0.0, user_travel_max)
-
-            # Weighted date selection: bias toward weekends or weekdays
-            raw_day = random.randint(0, days_back - 1)
-            entry_date = today - timedelta(days=raw_day)
-            is_weekend = entry_date.weekday() >= 5
-            if is_weekend and random.random() > weekend_bias:
-                # Re-roll to a weekday
                 raw_day = random.randint(0, days_back - 1)
                 entry_date = today - timedelta(days=raw_day)
-            elif not is_weekend and random.random() < weekend_bias * 0.4:
-                # Nudge toward a nearby weekend day
-                offset = (5 - entry_date.weekday()) % 7 or 7
-                entry_date = entry_date + timedelta(days=offset)
-                if entry_date > today:
-                    entry_date = today
+                is_weekend = entry_date.weekday() >= 5
+                if is_weekend and random.random() > weekend_bias:
+                    raw_day = random.randint(0, days_back - 1)
+                    entry_date = today - timedelta(days=raw_day)
+                elif not is_weekend and random.random() < weekend_bias * 0.4:
+                    offset = (5 - entry_date.weekday()) % 7 or 7
+                    entry_date = entry_date + timedelta(days=offset)
+                    if entry_date > today:
+                        entry_date = today
 
-            entry = LogEntry(
-                user_id=user.id,
-                category_id=category.id,
-                role_id=role.id,
-                title=_random_activity_title(category, role),
-                description=f"Auto-generated activity in {category.name}.",
-                notes=None,
-                hours=activity_hours,
-                travel_hours=travel_hours,
-                date=entry_date,
-            )
+                cur.execute(
+                    """INSERT INTO log_entries (user_id, category_id, role_id, title, description,
+                       hours, travel_hours, date, review_status, created_at, updated_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', NOW(), NOW()) RETURNING id""",
+                    (user_id, cat_id, role_id, _random_activity_title(cat_name, role_name),
+                     f"Auto-generated activity in {cat_name}.", activity_hours, travel_hours, entry_date),
+                )
+                entry_id = cur.fetchone()[0]
 
-            if secondary_role_max > 0:
-                entry.secondary_roles = _maybe_secondary_roles(role, roles, secondary_role_max)
+                # Secondary roles
+                if secondary_role_max > 0:
+                    candidates = [r for r in roles if r[0] != role_id]
+                    count = random.randint(0, min(secondary_role_max, len(candidates)))
+                    if count > 0:
+                        random.shuffle(candidates)
+                        for sr_id, _ in candidates[:count]:
+                            cur.execute(
+                                'INSERT INTO "_SecondaryRoles" ("A", "B") VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                                (entry_id, sr_id),
+                            )
 
-            db.session.add(entry)
-            entries_created += 1
+                entries_created += 1
 
-    db.session.commit()
+        conn.commit()
 
-    # Count users actually created in this run by prefix, for reporting.
-    created_users = User.query.filter(User.username.like(f"{prefix}_%"))  # noqa: E712
-    return SeedResult(users_created=created_users.count(), entries_created=entries_created, password_used=password)
+        # Count total with prefix
+        cur.execute("SELECT COUNT(*) FROM users WHERE username LIKE %s", (f"{prefix}_%",))
+        total_users = cur.fetchone()[0]
+
+        return SeedResult(users_created=total_users, entries_created=entries_created, password_used=password)
+
+    finally:
+        cur.close()
+        conn.close()
 
 
 def _parse_args() -> argparse.Namespace:
@@ -243,47 +258,26 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--min-entries", type=int, default=1, help="Minimum log entries per user")
     parser.add_argument("--max-entries", type=int, default=50, help="Maximum log entries per user")
     parser.add_argument("--prefix", type=str, default="artificial", help="Username prefix (e.g. artificial_001)")
-    parser.add_argument(
-        "--password",
-        type=str,
-        default="TestPassword123!",
-        help="Password assigned to all generated users",
-    )
-    parser.add_argument(
-        "--days-back",
-        type=int,
-        default=365,
-        help="Randomize entry dates in the last N days",
-    )
-    parser.add_argument(
-        "--purge",
-        action="store_true",
-        help="Delete existing generated users (by prefix) before seeding",
-    )
-    parser.add_argument(
-        "--secondary-role-max",
-        type=int,
-        default=2,
-        help="Max number of secondary roles per entry (0 to disable)",
-    )
+    parser.add_argument("--password", type=str, default="TestPassword123!", help="Password assigned to all generated users")
+    parser.add_argument("--days-back", type=int, default=365, help="Randomize entry dates in the last N days")
+    parser.add_argument("--purge", action="store_true", help="Delete existing generated users (by prefix) before seeding")
+    parser.add_argument("--secondary-role-max", type=int, default=2, help="Max number of secondary roles per entry (0 to disable)")
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
 
-    app = create_app()
-    with app.app_context():
-        result = seed_artificial_data(
-            user_count=args.users,
-            min_entries=args.min_entries,
-            max_entries=args.max_entries,
-            prefix=args.prefix,
-            password=args.password,
-            days_back=args.days_back,
-            purge=args.purge,
-            secondary_role_max=args.secondary_role_max,
-        )
+    result = seed_artificial_data(
+        user_count=args.users,
+        min_entries=args.min_entries,
+        max_entries=args.max_entries,
+        prefix=args.prefix,
+        password=args.password,
+        days_back=args.days_back,
+        purge=args.purge,
+        secondary_role_max=args.secondary_role_max,
+    )
 
     print("Seed complete")
     print(f"Users now present with prefix '{args.prefix}_': {result.users_created}")
