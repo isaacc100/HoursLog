@@ -103,7 +103,7 @@ export default function EditLogPage() {
                   </div>
                   <div className="col-md-4">
                     <label className="form-label">Travel Hours</label>
-                    <input type="number" className="form-control" step="0.25" min="0" max="24" value={form.travelHours} onChange={e => setForm(f => ({ ...f, travelHours: e.target.value }))} required />
+                    <input type="number" className="form-control" step="0.25" min="0" max="24" value={form.travelHours} onChange={e => setForm(f => ({ ...f, travelHours: e.target.value }))} />
                   </div>
                   <div className="col-md-4">
                     <label className="form-label">Date <span className="text-danger">*</span></label>
