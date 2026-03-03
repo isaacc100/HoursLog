@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  username        String    @unique
+  email           String    @unique
+  passwordHash    String    @map("password_hash")
+  firstName       String?   @map("first_name")
+  lastName        String?   @map("last_name")
+  displayName     String?   @map("display_name")
+  profilePic      String?   @map("profile_pic")
+  permissionLevel Int       @default(1) @map("permission_level")
+  emailVerified   Boolean   @default(false) @map("email_verified")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  lastLogin       DateTime? @map("last_login")
+
+  logEntries      LogEntry[]   @relation("UserEntries")
+  reviewedEntries LogEntry[]   @relation("ReviewedEntries")
+  auditLogs       AuditLog[]
+
+  @@map("users")
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  color       String    @default("#007bff")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  logEntries  LogEntry[]
+
+  @@map("categories")
+}
+
+model Role {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  logEntries       LogEntry[]  @relation("PrimaryRole")
+  secondaryEntries LogEntry[]  @relation("SecondaryRoles")
+
+  @@map("roles")
+}
+
+model LogEntry {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  categoryId   Int       @map("category_id")
+  roleId       Int       @map("role_id")
+  title        String
+  description  String?
+  notes        String?
+  hours        Float
+  travelHours  Float     @default(0) @map("travel_hours")
+  date         DateTime  @db.Date
+  reviewStatus String    @default("active") @map("review_status")
+  reviewedById Int?      @map("reviewed_by_id")
+  reviewedAt   DateTime? @map("reviewed_at")
+  denialReason String?   @map("denial_reason")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  user           User      @relation("UserEntries", fields: [userId], references: [id], onDelete: Cascade)
+  category       Category  @relation(fields: [categoryId], references: [id])
+  role           Role      @relation("PrimaryRole", fields: [roleId], references: [id])
+  reviewedBy     User?     @relation("ReviewedEntries", fields: [reviewedById], references: [id])
+  secondaryRoles Role[]    @relation("SecondaryRoles")
+
+  @@map("log_entries")
+}
+
+model AppSettings {
+  id                     Int     @id @default(autoincrement())
+  allowDisplayNameChange Boolean @default(true) @map("allow_display_name_change")
+  allowPasswordReset     Boolean @default(true) @map("allow_password_reset")
+  allowProfilePicChange  Boolean @default(true) @map("allow_profile_pic_change")
+  leaderboardSize        Int     @default(50) @map("leaderboard_size")
+  footerText             String  @default("") @map("footer_text")
+
+  @@map("app_settings")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  action    String
+  details   String?
+  ipAddress String?  @map("ip_address")
+  timestamp DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+model PermissionLevelConfig {
+  level Int    @id
+  name  String @default("")
+
+  canManageUsers           Boolean @default(false) @map("can_manage_users")
+  canChangeUserLevel       Boolean @default(false) @map("can_change_user_level")
+  canDeactivateUsers       Boolean @default(false) @map("can_deactivate_users")
+  canDeleteUsers           Boolean @default(false) @map("can_delete_users")
+  canManageRoles           Boolean @default(false) @map("can_manage_roles")
+  canManageCategories      Boolean @default(false) @map("can_manage_categories")
+  canViewAuditLog          Boolean @default(false) @map("can_view_audit_log")
+  canViewStatistics        Boolean @default(false) @map("can_view_statistics")
+  canViewAllEntries        Boolean @default(false) @map("can_view_all_entries")
+  canActionEntries         Boolean @default(false) @map("can_action_entries")
+  canDenyEntries           Boolean @default(false) @map("can_deny_entries")
+  canEditSettingDisplayName    Boolean @default(false) @map("can_edit_setting_display_name")
+  canEditSettingPasswordReset  Boolean @default(false) @map("can_edit_setting_password_reset")
+  canEditSettingProfilePic     Boolean @default(false) @map("can_edit_setting_profile_pic")
+  canEditSettingLeaderboardSize Boolean @default(false) @map("can_edit_setting_leaderboard_size")
+  canEditSettingFooterText     Boolean @default(false) @map("can_edit_setting_footer_text")
+
+  @@map("permission_level_configs")
+}
